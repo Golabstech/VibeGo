@@ -7,13 +7,13 @@
 
 // OTA & WiFi Includes
 #include <WiFi.h>
-#include <HTTPClient.h>
-#include <HTTPUpdate.h>
+#include <ArduinoJson.h>
 
 // --- CONFIGURATION ---
 #define WIFI_SSID "YOUR_WIFI_SSID"     // <--- CHANGE THIS
 #define WIFI_PASS "YOUR_WIFI_PASSWORD" // <--- CHANGE THIS
 #define FIRMWARE_URL "https://raw.githubusercontent.com/Golabstech/VibeGo/master/firmware/firmware.bin"
+#define VERSION_URL "https://raw.githubusercontent.com/Golabstech/VibeGo/master/firmware/version.json"
 #define APP_VERSION "1.0.0"
 
 static LGFX lcd;
@@ -96,6 +96,20 @@ void connectWiFi() {
     }
 }
 
+bool isNewer(String current, String remote) {
+    int c_major, c_minor, c_patch;
+    int r_major, r_minor, r_patch;
+    if (sscanf(current.c_str(), "%d.%d.%d", &c_major, &c_minor, &c_patch) != 3) return false;
+    if (sscanf(remote.c_str(), "%d.%d.%d", &r_major, &r_minor, &r_patch) != 3) return false;
+    
+    if (r_major > c_major) return true;
+    if (r_major < c_major) return false;
+    if (r_minor > c_minor) return true;
+    if (r_minor < c_minor) return false;
+    if (r_patch > c_patch) return true;
+    return false;
+}
+
 void checkOTA() {
     if (WiFi.status() != WL_CONNECTED) return;
 
@@ -103,32 +117,55 @@ void checkOTA() {
     lcd.println("Checking Update...");
 
     WiFiClientSecure client;
-    client.setInsecure(); // Skip certificate validation for simplicity
+    client.setInsecure(); 
 
-    // Note: In a real scenario, you should check version.json first.
-    // Here we try to update directly. HTTPUpdate handles "no update" if file is same? 
-    // Actually, it just downloads whatever is there. 
-    // For production, implement version check logic here.
-    
-    t_httpUpdate_return ret = httpUpdate.update(client, FIRMWARE_URL);
-    
-    switch (ret) {
-        case HTTP_UPDATE_FAILED:
-            Serial.printf("HTTP_UPDATE_FAILED Error (%d): %s\n", httpUpdate.getLastError(), httpUpdate.getLastErrorString().c_str());
-            lcd.println("Update Failed");
-            break;
-        case HTTP_UPDATE_NO_UPDATES:
-            Serial.println("HTTP_UPDATE_NO_UPDATES");
-            lcd.println("No Updates");
-            break;
-        case HTTP_UPDATE_OK:
-            Serial.println("HTTP_UPDATE_OK");
-            lcd.println("Update OK! Rebooting...");
-            break;
+    HTTPClient http;
+    http.begin(client, VERSION_URL);
+    int httpCode = http.GET();
+
+    if (httpCode == HTTP_CODE_OK) {
+        String payload = http.getString();
+        DynamicJsonDocument doc(1024);
+        deserializeJson(doc, payload);
+        
+        const char* remote_version = doc["version"];
+        const char* firmware_url = doc["url"]; // Use URL from JSON if available, else fallback
+
+        Serial.printf("Current: %s, Remote: %s\n", APP_VERSION, remote_version);
+        lcd.printf("Ver: %s -> %s\n", APP_VERSION, remote_version);
+
+        if (isNewer(APP_VERSION, String(remote_version))) {
+            Serial.println("New version available! Updating...");
+            lcd.println("Updating...");
+            
+            // Use URL from JSON if valid, otherwise use default
+            String url = (firmware_url && strlen(firmware_url) > 0) ? String(firmware_url) : String(FIRMWARE_URL);
+            
+            t_httpUpdate_return ret = httpUpdate.update(client, url);
+            
+            switch (ret) {
+                case HTTP_UPDATE_FAILED:
+                    Serial.printf("Update Failed: %s\n", httpUpdate.getLastErrorString().c_str());
+                    lcd.println("Update Failed");
+                    break;
+                case HTTP_UPDATE_NO_UPDATES:
+                    lcd.println("No Updates");
+                    break;
+                case HTTP_UPDATE_OK:
+                    lcd.println("Rebooting...");
+                    break;
+            }
+        } else {
+            Serial.println("System is up to date.");
+            lcd.println("Up to date.");
+        }
+    } else {
+        Serial.printf("Version Check Failed: %d\n", httpCode);
+        lcd.println("Check Failed");
     }
+    http.end();
     
-    lcd.println("OTA Check Done (Demo)");
-    delay(1000);
+    delay(2000);
 }
 
 // --- APP LOGIC ---
