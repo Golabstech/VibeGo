@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VibeGo UI Design Preview</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap');
+
+        :root {
+            --bg-color: #0f172a;
+            --card-bg: rgba(30, 41, 59, 0.7);
+            --primary: #3b82f6;
+            --primary-glow: rgba(59, 130, 246, 0.5);
+            --accent: #06b6d4;
+            --danger: #ef4444;
+            --success: #22c55e;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+        }
+
+        body {
+            margin: 0;
+            padding: 20px;
+            background-color: #000;
+            font-family: 'Outfit', sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+            color: var(--text-main);
+        }
+
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        button.nav-btn {
+            padding: 10px 20px;
+            background: #334155;
+            border: none;
+            color: white;
+            border-radius: 8px;
+            cursor: pointer;
+            font-family: inherit;
+            transition: all 0.2s;
+        }
+
+        button.nav-btn:hover,
+        button.nav-btn.active {
+            background: var(--primary);
+            box-shadow: 0 0 15px var(--primary-glow);
+        }
+
+        /* Device Frame 800x480 */
+        .device-frame {
+            width: 800px;
+            height: 480px;
+            background: var(--bg-color);
+            position: relative;
+            overflow: hidden;
+            border: 2px solid #333;
+            box-shadow: 0 0 50px rgba(0, 0, 0, 0.5);
+            background-image:
+                radial-gradient(circle at 10% 20%, rgba(59, 130, 246, 0.15) 0%, transparent 40%),
+                radial-gradient(circle at 90% 80%, rgba(6, 182, 212, 0.15) 0%, transparent 40%);
+        }
+
+        /* Common Elements */
+        .screen {
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            top: 0;
+            left: 0;
+            display: none;
+            /* Hidden by default */
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            transition: opacity 0.5s ease;
+        }
+
+        .screen.active {
+            display: flex;
+            opacity: 1;
+        }
+
+        h1 {
+            font-size: 48px;
+            font-weight: 700;
+            margin: 0 0 10px 0;
+            background: linear-gradient(135deg, #fff 0%, #94a3b8 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+
+        p.subtitle {
+            font-size: 24px;
+            color: var(--text-muted);
+            margin: 0 0 40px 0;
+        }
+
+        /* Glassmorphism Card */
+        .glass-panel {
+            background: var(--card-bg);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 24px;
+            padding: 30px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+
+        /* Buttons */
+        .action-btn {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--accent) 100%);
+            border: none;
+            padding: 20px 60px;
+            font-size: 28px;
+            font-weight: 600;
+            color: white;
+            border-radius: 50px;
+            cursor: pointer;
+            box-shadow: 0 10px 25px -5px var(--primary-glow);
+            transition: transform 0.2s, box-shadow 0.2s;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .action-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 20px 30px -10px var(--primary-glow);
+        }
+
+        .action-btn:active {
+            transform: translateY(1px);
+        }
+
+        /* Screen 1: Home */
+        .logo-circle {
+            width: 120px;
+            height: 120px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.05));
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 30px;
+            font-size: 48px;
+            box-shadow: 0 0 30px rgba(59, 130, 246, 0.2);
+        }
+
+        /* Screen 2: Measuring */
+        .gauge-container {
+            width: 300px;
+            height: 300px;
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .gauge-ring {
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            border: 15px solid rgba(255, 255, 255, 0.05);
+            position: absolute;
+        }
+
+        .gauge-progress {
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            border: 15px solid transparent;
+            border-top-color: var(--accent);
+            border-right-color: var(--primary);
+            position: absolute;
+            transform: rotate(-45deg);
+            animation: spin 2s infinite linear;
+        }
+
+        .value-display {
+            text-align: center;
+            z-index: 2;
+        }
+
+        .value-number {
+            font-size: 72px;
+            font-weight: 700;
+            line-height: 1;
+        }
+
+        .value-unit {
+            font-size: 24px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+        }
+
+        /* Screen 3: Result */
+        .result-card {
+            text-align: center;
+            /* Width handled inline */
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 8px 24px;
+            border-radius: 20px;
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 20px;
+            text-transform: uppercase;
+        }
+
+        .status-safe {
+            background: rgba(34, 197, 94, 0.2);
+            color: var(--success);
+            border: 1px solid rgba(34, 197, 94, 0.3);
+        }
+
+        .status-danger {
+            background: rgba(239, 68, 68, 0.2);
+            color: var(--danger);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+
+        .bac-value {
+            font-size: 96px;
+            font-weight: 700;
+            margin: 10px 0;
+            background: linear-gradient(to right, #fff, #cbd5e1);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .info-row {
+            display: flex;
+            justify-content: space-around;
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .info-item h4 {
+            margin: 0;
+            color: var(--text-muted);
+            font-size: 14px;
+            font-weight: 400;
+        }
+
+        .info-item div {
+            font-size: 20px;
+            font-weight: 600;
+            margin-top: 5px;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
+        /* Footer Info */
+        .footer {
+            position: absolute;
+            bottom: 20px;
+            width: 100%;
+            text-align: center;
+            font-size: 14px;
+            color: rgba(255, 255, 255, 0.3);
+        }
+
+        @keyframes pulse {
+            0% {
+                transform: translate(-50%, -50%) scale(0.95);
+                opacity: 0.5;
+            }
+
+            50% {
+                transform: translate(-50%, -50%) scale(1.1);
+                opacity: 0.2;
+            }
+
+            100% {
+                transform: translate(-50%, -50%) scale(0.95);
+                opacity: 0.5;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="controls">
+        <button class="nav-btn active" onclick="showScreen('disclaimer', this)">0. Disclaimer</button>
+        <button class="nav-btn" onclick="showScreen('home', this)">1. Home Screen</button>
+        <button class="nav-btn" onclick="showScreen('measuring', this)">2. Measuring</button>
+        <button class="nav-btn" onclick="showScreen('result-safe', this)">3. Result (Safe)</button>
+        <button class="nav-btn" onclick="showScreen('result-danger', this)">4. Result (Danger)</button>
+    </div>
+
+    <div class="device-frame">
+
+        <!-- Screen 0: Disclaimer -->
+        <div id="disclaimer" class="screen active">
+            <div class="glass-panel" style="width: 600px; text-align: center;">
+                <h2 style="color: var(--accent); margin-top: 0;">⚠️ YASAL UYARI</h2>
+                <p style="font-size: 18px; line-height: 1.6; color: #cbd5e1; text-align: justify;">
+                    Bu cihaz (VibeGo) yalnızca eğlence ve bilgilendirme amaçlı tasarlanmıştır.
+                    Cihazın ölçüm sonuçları; ortam koşulları, sensör durumu ve kullanım şekline göre değişiklik
+                    gösterebilir.
+                    Sonuçların yasal, tıbbi veya adli bir geçerliliği yoktur.
+                    Sürüş yeterliliğinin tespiti için kullanılamaz.
+                    Alkol aldıysanız, lütfen araç kullanmayınız.
+                </p>
+                <button class="action-btn" style="font-size: 20px; padding: 15px 40px; margin-top: 20px;"
+                    onclick="showScreen('home', document.querySelectorAll('.nav-btn')[1])">
+                    KABUL EDİYORUM
+                </button>
+            </div>
+        </div>
+
+        <!-- Screen 1: Home -->
+        <div id="home" class="screen">
+            <div style="display: flex; gap: 60px; align-items: center; justify-content: center; width: 100%;">
+
+                <!-- Left Column: Brand & Action -->
+                <div style="text-align: center; display: flex; flex-direction: column; align-items: center;">
+                    <div class="logo-circle"
+                        style="width: 100px; height: 100px; font-size: 40px; margin-bottom: 20px; border-color: var(--primary);">
+                        ✨
+                    </div>
+                    <h1 style="font-size: 56px; margin-bottom: 5px; letter-spacing: 4px;">VibeGo</h1>
+                    <p class="subtitle" style="font-size: 18px; margin-bottom: 40px; color: var(--text-muted);">Check
+                        Your Vibe. Ready to Go?</p>
+
+                    <!-- Breath Detection Indicator -->
+                    <div style="position: relative;">
+                        <!-- Pulsing Ring -->
+                        <div
+                            style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 200px; height: 60px; border-radius: 30px; background: var(--primary); opacity: 0.2; animation: pulse 2s infinite;">
+                        </div>
+
+                        <!-- Status Pill -->
+                        <div
+                            style="position: relative; background: rgba(15, 23, 42, 0.8); border: 1px solid var(--primary); padding: 12px 30px; border-radius: 30px; display: flex; align-items: center; gap: 10px; box-shadow: 0 0 20px rgba(59, 130, 246, 0.3);">
+                            <span style="font-size: 24px;">💨</span>
+                            <div style="text-align: left;">
+                                <div style="font-size: 16px; font-weight: 700; color: white;">Üflemeye Başla</div>
+                                <div
+                                    style="font-size: 10px; color: var(--primary); text-transform: uppercase; letter-spacing: 1px;">
+                                    Sensör Aktif</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right Column: Usage Instructions -->
+                <div class="glass-panel"
+                    style="width: 260px; padding: 25px; text-align: left; border-left: 4px solid var(--primary);">
+                    <h3 style="margin: 0 0 20px 0; color: white; font-size: 20px;">Nasıl Kullanılır?</h3>
+                    <div style="display: flex; gap: 18px; flex-direction: column;">
+                        <div style="display: flex; align-items: center; gap: 15px;">
+                            <div
+                                style="background: var(--primary); width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 12px; color: white;">
+                                1</div>
+                            <div style="font-size: 15px; color: #e2e8f0;">Pipet Alın</div>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 15px;">
+                            <div
+                                style="background: var(--primary); width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 12px; color: white;">
+                                2</div>
+                            <div style="font-size: 15px; color: #e2e8f0;">Sensöre Takın</div>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 15px;">
+                            <div
+                                style="background: var(--primary); width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 12px; color: white;">
+                                3</div>
+                            <div style="font-size: 15px; color: #e2e8f0;">Derin Nefes Üfleyin</div>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 15px;">
+                            <div
+                                style="background: var(--primary); width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 12px; color: white;">
+                                4</div>
+                            <div style="font-size: 15px; color: #e2e8f0;">Sonucu Görün</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="footer">v1.0.0 • Ready to Measure</div>
+        </div>
+
+        <!-- Screen 2: Measuring -->
+        <div id="measuring" class="screen">
+            <div class="gauge-container">
+                <div class="gauge-ring"></div>
+                <div class="gauge-progress"></div>
+                <div class="value-display">
+                    <div class="value-number">Analyzing</div>
+                    <div class="value-unit">Please Blow</div>
+                </div>
+            </div>
+            <p class="subtitle" style="margin-top: 30px;">Keep blowing for 3 seconds...</p>
+        </div>
+
+        <!-- Screen 3: Result (Safe) -->
+        <div id="result-safe" class="screen">
+            <div style="display: flex; gap: 20px; align-items: stretch; height: 380px;">
+                <!-- Left Panel: Result Info -->
+                <div class="glass-panel result-card"
+                    style="width: 340px; display: flex; flex-direction: column; justify-content: center; align-items: center;">
+                    <div class="status-badge status-safe">Safe to Drive</div>
+
+                    <div class="bac-value">0.12</div>
+                    <div class="value-unit">PROMIL</div>
+
+                    <div class="info-row" style="width: 100%;">
+                        <div class="info-item">
+                            <h4>Limit</h4>
+                            <div>0.50</div>
+                        </div>
+                        <div class="info-item">
+                            <h4>Status</h4>
+                            <div style="color: var(--success)">Normal</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right Panel: QR + Button -->
+                <div class="glass-panel"
+                    style="width: 240px; display: flex; flex-direction: column; justify-content: space-between; align-items: center; padding: 20px;">
+
+                    <!-- QR Code Container -->
+                    <div
+                        style="text-align: center; flex-grow: 1; display: flex; flex-direction: column; justify-content: center;">
+                        <img src="https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=https://m.uber.com/ul/"
+                            alt="QR Code"
+                            style="border-radius: 10px; width: 160px; height: 160px; margin-bottom: 10px;">
+                        <p style="margin: 0; font-size: 16px; color: var(--accent); font-weight: 600;">Open Uber</p>
+                    </div>
+
+                    <!-- New Test Button -->
+                    <button class="nav-btn"
+                        style="background: rgba(255,255,255,0.1); width: 100%; padding: 15px; font-size: 18px; margin-top: 20px;"
+                        onclick="showScreen('disclaimer', document.querySelectorAll('.nav-btn')[0])">
+                        New Test
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Screen 4: Result (Danger) -->
+        <div id="result-danger" class="screen">
+            <div style="display: flex; gap: 20px; align-items: stretch; height: 380px;">
+                <!-- Left Panel: Result Info -->
+                <div class="glass-panel result-card"
+                    style="width: 340px; display: flex; flex-direction: column; justify-content: center; align-items: center; border-color: rgba(239, 68, 68, 0.3);">
+                    <div class="status-badge status-danger">Do Not Drive</div>
+
+                    <div class="bac-value"
+                        style="background: linear-gradient(to right, #ef4444, #f87171); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">
+                        1.45</div>
+                    <div class="value-unit">PROMIL</div>
+
+                    <div class="info-row" style="width: 100%;">
+                        <div class="info-item">
+                            <h4>Limit</h4>
+                            <div>0.50</div>
+                        </div>
+                        <div class="info-item">
+                            <h4>Status</h4>
+                            <div style="color: var(--danger)">Intoxicated</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right Panel: QR + Button -->
+                <div class="glass-panel"
+                    style="width: 240px; display: flex; flex-direction: column; justify-content: space-between; align-items: center; padding: 20px; border-color: rgba(239, 68, 68, 0.3);">
+
+                    <!-- QR Code Container -->
+                    <div
+                        style="text-align: center; flex-grow: 1; display: flex; flex-direction: column; justify-content: center;">
+                        <img src="https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=https://m.uber.com/ul/"
+                            alt="QR Code"
+                            style="border-radius: 10px; width: 160px; height: 160px; margin-bottom: 10px;">
+                        <p style="margin: 0; font-size: 16px; color: var(--primary); font-weight: 600;">Open Uber</p>
+                    </div>
+
+                    <!-- New Test Button -->
+                    <button class="nav-btn"
+                        style="background: rgba(255,255,255,0.1); width: 100%; padding: 15px; font-size: 18px; margin-top: 20px;"
+                        onclick="showScreen('disclaimer', document.querySelectorAll('.nav-btn')[0])">
+                        New Test
+                    </button>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        function showScreen(screenId, btn) {
+            // Hide all screens
+            document.querySelectorAll('.screen').forEach(el => {
+                el.classList.remove('active');
+            });
+
+            // Show selected screen
+            document.getElementById(screenId).classList.add('active');
+
+            // Update buttons
+            if (btn) {
+                document.querySelectorAll('.nav-btn').forEach(el => {
+                    el.classList.remove('active');
+                });
+                btn.classList.add('active');
+            }
+        }
+    </script>
+</body>
+
+</html>
