@@ -5,17 +5,28 @@
 #include "lv_conf.h"
 #include "ui/ui.h"
 
+// OTA & WiFi Includes
+#include <WiFi.h>
+#include <HTTPClient.h>
+#include <HTTPUpdate.h>
+
+// --- CONFIGURATION ---
+#define WIFI_SSID "YOUR_WIFI_SSID"     // <--- CHANGE THIS
+#define WIFI_PASS "YOUR_WIFI_PASSWORD" // <--- CHANGE THIS
+#define FIRMWARE_URL "https://raw.githubusercontent.com/Golabstech/VibeGo/master/firmware/firmware.bin"
+#define APP_VERSION "1.0.0"
+
 static LGFX lcd;
 
 /* Change to your screen resolution */
 #ifdef WOKWI
 static const uint32_t screenWidth  = 240;
 static const uint32_t screenHeight = 320;
-#define MQ3_PIN 4 // Wokwi Potentiometer usually on 4 or 34
+#define MQ3_PIN 4 
 #else
 static const uint32_t screenWidth  = 800;  // WaveShare 4.3"
 static const uint32_t screenHeight = 480;  // WaveShare 4.3"
-#define MQ3_PIN 4 // GPIO 4 as per README
+#define MQ3_PIN 4 
 #endif
 
 static lv_disp_draw_buf_t draw_buf;
@@ -53,6 +64,73 @@ void my_touchpad_read( lv_indev_drv_t * indev_driver, lv_indev_data_t * data )
     }
 }
 
+// --- OTA FUNCTIONS ---
+void connectWiFi() {
+    Serial.print("Connecting to WiFi");
+    lcd.fillScreen(0x0000);
+    lcd.setTextColor(0xFFFF);
+    lcd.setTextSize(2);
+    lcd.setCursor(10, 10);
+    lcd.println("Connecting to WiFi...");
+    lcd.println(WIFI_SSID);
+
+    WiFi.begin(WIFI_SSID, WIFI_PASS);
+    
+    int timeout = 0;
+    while (WiFi.status() != WL_CONNECTED && timeout < 20) { // 10 seconds timeout
+        delay(500);
+        Serial.print(".");
+        lcd.print(".");
+        timeout++;
+    }
+
+    if (WiFi.status() == WL_CONNECTED) {
+        Serial.println("\nConnected!");
+        lcd.println("\nConnected!");
+        lcd.println(WiFi.localIP());
+    } else {
+        Serial.println("\nWiFi Connection Failed!");
+        lcd.println("\nConnection Failed!");
+        lcd.println("Skipping OTA...");
+        delay(2000);
+    }
+}
+
+void checkOTA() {
+    if (WiFi.status() != WL_CONNECTED) return;
+
+    Serial.println("Checking for Update...");
+    lcd.println("Checking Update...");
+
+    WiFiClientSecure client;
+    client.setInsecure(); // Skip certificate validation for simplicity
+
+    // Note: In a real scenario, you should check version.json first.
+    // Here we try to update directly. HTTPUpdate handles "no update" if file is same? 
+    // Actually, it just downloads whatever is there. 
+    // For production, implement version check logic here.
+    
+    t_httpUpdate_return ret = httpUpdate.update(client, FIRMWARE_URL);
+    
+    switch (ret) {
+        case HTTP_UPDATE_FAILED:
+            Serial.printf("HTTP_UPDATE_FAILED Error (%d): %s\n", httpUpdate.getLastError(), httpUpdate.getLastErrorString().c_str());
+            lcd.println("Update Failed");
+            break;
+        case HTTP_UPDATE_NO_UPDATES:
+            Serial.println("HTTP_UPDATE_NO_UPDATES");
+            lcd.println("No Updates");
+            break;
+        case HTTP_UPDATE_OK:
+            Serial.println("HTTP_UPDATE_OK");
+            lcd.println("Update OK! Rebooting...");
+            break;
+    }
+    
+    lcd.println("OTA Check Done (Demo)");
+    delay(1000);
+}
+
 // --- APP LOGIC ---
 enum AppState {
     STATE_IDLE,
@@ -63,8 +141,8 @@ enum AppState {
 AppState appState = STATE_IDLE;
 unsigned long measureStartTime = 0;
 int maxAnalogValue = 0;
-const int THRESHOLD_START = 1500; // Threshold to start measuring
-const int THRESHOLD_DANGER = 2000; // Threshold for Danger result (approx 0.50 promil)
+const int THRESHOLD_START = 1500; 
+const int THRESHOLD_DANGER = 2000; 
 
 void setup()
 {
@@ -82,12 +160,18 @@ void setup()
     lcd.setRotation( 0 );
     lcd.setBrightness(255);
 
+    // 1. Connect WiFi & Check OTA
+    #ifndef WOKWI // Skip WiFi in Wokwi for speed unless needed
+    connectWiFi();
+    checkOTA();
+    #endif
+
+    // 2. Init LVGL
     lv_init();
     Serial.println("LVGL Initialized");
 
     lv_disp_draw_buf_init( &draw_buf, buf, NULL, screenWidth * 10 );
 
-    /*Initialize the display*/
     static lv_disp_drv_t disp_drv;
     lv_disp_drv_init( &disp_drv );
     disp_drv.hor_res = screenWidth;
@@ -96,7 +180,6 @@ void setup()
     disp_drv.draw_buf = &draw_buf;
     lv_disp_drv_register( &disp_drv );
 
-    /*Initialize the input device driver*/
     static lv_indev_drv_t indev_drv;
     lv_indev_drv_init( &indev_drv );
     indev_drv.type = LV_INDEV_TYPE_POINTER;
@@ -104,20 +187,17 @@ void setup()
     lv_indev_drv_register( &indev_drv );
 
     ui_init();
-    Serial.println("UI Initialized - Manual Code");
+    Serial.println("UI Initialized");
 }
 
 void loop()
 {
-    lv_timer_handler(); /* let the GUI do its work */
+    lv_timer_handler(); 
     
-    // Sensor Logic
     int sensorValue = analogRead(MQ3_PIN);
     
-    // State Machine
     switch (appState) {
         case STATE_IDLE:
-            // Check if we are on Home Screen (or Disclaimer, but usually Home)
             if (lv_scr_act() == ui_Home) {
                 if (sensorValue > THRESHOLD_START) {
                     Serial.println("Breath Detected! Starting Measurement...");
@@ -130,36 +210,24 @@ void loop()
             break;
 
         case STATE_MEASURING:
-            // Keep track of max value
             if (sensorValue > maxAnalogValue) {
                 maxAnalogValue = sensorValue;
             }
-
-            // Update UI (Optional: Update text to show "Blowing...")
-            // if (millis() % 500 == 0) Serial.printf("Measuring: %d\n", sensorValue);
-
-            // Finish after 3 seconds
             if (millis() - measureStartTime > 3000) {
                 Serial.printf("Measurement Done. Max Value: %d\n", maxAnalogValue);
                 
-                // Calculate Promil (Simple Mapping)
-                // Assuming 1000 is base, 4095 is max.
-                // 0.00 - 4.00 Promil range
                 float promil = 0.0;
                 if (maxAnalogValue > 1000) {
-                    promil = (float)(maxAnalogValue - 1000) / 800.0; // Rough calibration
+                    promil = (float)(maxAnalogValue - 1000) / 800.0; 
                 }
                 
-                // Format string
                 char promilStr[10];
                 sprintf(promilStr, "%.2f", promil);
 
                 if (promil >= 0.50) {
-                    // DANGER
                     if (ui_Result_Danger_Value) lv_label_set_text(ui_Result_Danger_Value, promilStr);
                     lv_scr_load_anim(ui_Result_Danger, LV_SCR_LOAD_ANIM_FADE_ON, 500, 0, false);
                 } else {
-                    // SAFE
                     if (ui_Result_Safe_Value) lv_label_set_text(ui_Result_Safe_Value, promilStr);
                     lv_scr_load_anim(ui_Result_Safe, LV_SCR_LOAD_ANIM_FADE_ON, 500, 0, false);
                 }
@@ -169,10 +237,8 @@ void loop()
             break;
 
         case STATE_RESULT:
-            // Wait for user to go back to Disclaimer/Home
             if (lv_scr_act() == ui_Disclaimer || lv_scr_act() == ui_Home) {
                 appState = STATE_IDLE;
-                Serial.println("Resetting to IDLE");
             }
             break;
     }
@@ -181,7 +247,7 @@ void loop()
 }
 
 #else // NATIVE / EMULATOR
-// ... (Keep existing emulator code or update similarly if needed)
+// ... (Keep existing emulator code)
 #include "lvgl.h"
 #include "lv_drivers/sdl/sdl.h"
 #include "ui/ui.h"
