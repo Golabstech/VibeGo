@@ -1,92 +1,174 @@
-# 🍺 AlkoMetric Kiosk - Proje Geliştirme Dokümanı
+# 🍺 VibeGo - AlkoMetric Kiosk
 
-> **Proje Tanımı:** ESP32-S3 tabanlı, dokunmatik ekranlı, modern arayüze sahip ve bulut entegrasyonlu (QR Taksi) ticari alkolmetre kiosk projesi.
+**Eğlence Amaçlı Akıllı Alkolmetre Kiosk Sistemi**
 
----
-
-## 📋 1. Donanım Listesi (BOM)
-
-Bu proje **JC4827W543** geliştirme kartı üzerine kuruludur.
-
-| Bileşen | Model / Özellik | Adet | Notlar |
-| :--- | :--- | :--- | :--- |
-| **Ana Kart + Ekran** | JC4827W543 (ESP32-S3) | 1 | 4.3 inç veya 5.0 inç Kapasitif Dokunmatik |
-| **Alkol Sensörü** | MQ-3 Modülü | 1 | Isıtıcı devresi için 5V besleme şart |
-| **ADC Dönüştürücü** | (Opsiyonel) ADS1115 | 1 | Daha hassas ölçüm için harici ADC önerilir |
-| **Güç Kaynağı** | 5V 3A Adaptör | 1 | Sensör ısıtıcısı akım çeker, kaliteli adaptör şart |
-| **Kasa** | Özel Tasarım | 1 | 3D Baskı veya Pleksi Lazer Kesim |
-| **Soğutma** | Mini Fan (30mm) | 1 | Sensörün temiz hava alması (tahliye) için |
+![Platform](https://img.shields.io/badge/Platform-ESP32-blue)
+![Display](https://img.shields.io/badge/Display-JC2432W328-green)
+![Framework](https://img.shields.io/badge/Framework-Arduino%20%2B%20LVGL-orange)
+![License](https://img.shields.io/badge/License-MIT-yellow)
 
 ---
 
-## ⚡ 2. Bağlantı Şeması (Wiring Scheme)
+## 📋 Proje Özeti
 
-**ÖNEMLİ:** ESP32 girişleri **3.3V** ile çalışır. MQ-3 sensörü ise **5V** ile çalışır ve 0-5V arası analog çıktı verebilir. ESP32'yi yakmamak için bir **Voltaj Bölücü** (Voltage Divider) kullanmalısın.
+VibeGo, bar ve eğlence mekanları için tasarlanmış, modern dokunmatik ekranlı bir alkolmetre kiosk sistemidir. Kullanıcılar nefes üfleyerek kandaki tahmini alkol oranını (BAC) öğrenebilir.
 
-### MQ-3 Sensör Bağlantısı
-
-
-
-[Image of basic voltage divider circuit with 2 resistors]
-
-
-1.  **VCC (Sensör):** -> Harici 5V Kaynağına (ESP32'nin 5V pininden çekme, harici besle)
-2.  **GND (Sensör):** -> Ortak GND (ESP32 GND ile birleştir)
-3.  **A0 (Analog Çıkış):** -> **Voltaj Bölücüye Girecek**
-    * *Voltaj Bölücü Formülü:*
-    * MQ-3 A0 Çıkışı ---[2k Direnç]---(Ölçüm Noktası)---[3.3k Direnç]---GND
-    * *(Ölçüm Noktası)* -> **ESP32 GPIO (Örn: GPIO 4)**
-
-### Fan ve Butonlar
-* **Fan:** Doğrudan 5V'a bağlanabilir (Sürekli çalışır) veya bir MOSFET (IRL540) ile ESP32 tarafından kontrol edilebilir.
+> ⚠️ **Yasal Uyarı:** Bu cihaz yalnızca eğlence amaçlıdır. Sonuçların tıbbi veya yasal geçerliliği yoktur. Alkol aldıysanız kesinlikle araç kullanmayınız!
 
 ---
 
-## 🛠️ 3. Geliştirme Yol Haritası (Roadmap)
+## 🖥️ Donanım Platformu
 
-### Aşama 1: "Hello World" (Prototip)
-- [ ] ESP32-S3 kartına LVGL veya Web Server kurulumu.
-- [ ] Ekrana basit bir "Merhaba" yazısı ve buton koyma.
-- [ ] Dokunmatik hassasiyetinin test edilmesi (Pleksi arkası testleri).
+### Ana Kart: JC2432W328
 
-### Aşama 2: Sensör Kalibrasyonu (En Kritik Aşama)
-- [ ] MQ-3 sensörünü bağla ve "Raw Analog" veriyi ekrana yazdır.
-- [ ] **Burn-in:** Yeni sensörü en az 24 saat boşta çalıştır (Isıtıcısı yansın).
-- [ ] **Base Value:** Temiz havadaki değeri kaydet.
-- [ ] **Test:** Bilinen bir alkol oranıyla (veya alkollü nefesle) eşik değerleri belirle.
-  - *Örn: Analog 1200 = 0 Promil, Analog 2400 = 0.50 Promil (Tahmini)*
+| Özellik | Değer |
+|---------|-------|
+| **İşlemci** | ESP32-WROOM-32 (Dual-core, 240MHz) |
+| **Ekran** | 2.8" TFT LCD, 320x240 (Landscape) |
+| **Display Controller** | ST7789 (SPI) |
+| **Touch Controller** | CST820 Capacitive (I2C) |
+| **Bellek** | 520KB SRAM, 4MB Flash |
+| **Bağlantı** | WiFi + Bluetooth LE |
 
-### Aşama 3: Kasa ve Montaj
-- [ ] Kasa tasarımı yapılırken **"Air Gap"** (Hava Boşluğu) kuralına uyulmalı.
-- [ ] Ekran ile ön pleksi arasında boşluk kalmamalı.
-- [ ] **Hava Akışı:** Üflenen nefesin cihazın içinde birikmemesi için arkada tahliye delikleri olmalı.
+### Pin Bağlantıları
 
-### Aşama 4: Yazılım Kilitleme (Güvenlik)
-- [ ] Yazılım bittikten sonra ESP32 **Flash Encryption** aktif edilmeli.
-- [ ] Cihazın USB portundan kod çekilmesi engellenmeli.
+**Display (SPI):**
+| Pin | GPIO |
+|-----|------|
+| MOSI | 13 |
+| SCLK | 14 |
+| CS | 15 |
+| DC | 2 |
+| BL | 27 |
 
----
-
-## 🚨 4. Yazılım Yapısı ve Öneriler
-
-### Arayüz Teknolojisi Seçimi
-Bu proje için iki yolun var:
-
-1.  **SquareLine Studio (LVGL):** * *Avantajı:* Çok hızlı, akıcı, profesyonel görünür. C++ ile derlenir.
-    * *Dezavantajı:* Öğrenme eğrisi biraz yüksektir.
-
-2.  **Web Tabanlı Kiosk (Verdiğimiz HTML Örneği):**
-    * *Yöntem:* ESP32'yi bir Web Sunucusu yaparsın. Ekranda bir WebView (veya basit tarayıcı) çalıştırırsın.
-    * *Avantajı:* HTML/CSS ile tasarım yapmak çok kolaydır.
-    * *Dezavantajı:* LVGL kadar "native" ve hızlı hissettirmeyebilir.
-
-### QR Kod Stratejisi
-QR kodu statik bir resim olarak koyma. `LVGL` kütüphanesinin **QR Code Widget**'ını kullan. Böylece cihazın içinden linki istediğin zaman değiştirebilirsin (Config dosyasından).
+**Touch (I2C):**
+| Pin | GPIO |
+|-----|------|
+| SDA | 33 |
+| SCL | 32 |
+| RST | 25 |
+| INT | 21 |
 
 ---
 
-## ⚠️ 5. Yasal Uyarı ve Sorumluluk Reddi (Disclaimer)
+## 🎨 Kullanıcı Arayüzü
 
-Bu metni cihazın açılış ekranına ve kasasına ekle:
+### Ekran Akışı
 
-> "Bu cihaz (AlkoMetric) yalnızca eğlence ve bilgilendirme amaçlı tasarlanmıştır. Cihazın ölçüm sonuçları; ortam koşulları, sensör durumu ve kullanım şekline göre değişiklik gösterebilir. Sonuçların yasal, tıbbi veya adli bir geçerliliği yoktur. Sürüş yeterliliğinin tespiti için kullanılamaz. Alkol aldıysanız, lütfen araç kullanmayınız. Üretici ve işletme, doğabilecek olumsuz durumlardan sorumlu tutulamaz."
+```
+┌─────────────┐     ┌─────────────┐     ┌─────────────┐     ┌─────────────┐
+│  DISCLAIMER │ ──► │    HOME     │ ──► │  MEASURING  │ ──► │   RESULT    │
+│  Yasal Uyarı│     │  Ana Menü   │     │   Ölçüm     │     │   Sonuç     │
+│             │     │             │     │             │     │             │
+│  [KABUL ET] │     │ [TESTE BAŞ] │     │  (Spinner)  │     │  ✓ 0.15‰   │
+└─────────────┘     └─────────────┘     └─────────────┘     └─────────────┘
+                                                                   │
+                                                                   ▼
+                                                            [YENİ TEST]
+```
+
+### Tema: Dark Mode
+
+| Renk | Hex | Kullanım |
+|------|-----|----------|
+| Background | `#0F172A` | Ana arka plan |
+| Panel | `#1E293B` | Kartlar |
+| Primary | `#3B82F6` | Butonlar |
+| Cyan | `#06B6D4` | Vurgular |
+| Green | `#22C55E` | Güvenli sonuç |
+| Red | `#EF4444` | Tehlikeli sonuç |
+
+---
+
+## � Kurulum
+
+### Gereksinimler
+
+- [PlatformIO](https://platformio.org/) (VS Code extension)
+- USB-C kablo
+- JC2432W328 geliştirme kartı
+
+### Derleme ve Yükleme
+
+```bash
+# Projeyi derle
+pio run
+
+# Firmware'i yükle (COM portunu ayarlayın)
+pio run -t upload --upload-port COM14
+
+# Seri monitör
+pio device monitor --port COM14 --baud 115200
+```
+
+---
+
+## 📁 Proje Yapısı
+
+```
+VibeGo/
+├── platformio.ini          # PlatformIO konfigürasyonu
+├── src/
+│   ├── main.cpp           # Ana program + sensör simülasyonu
+│   ├── LGFX_Setup.h       # Display/Touch sürücü konfigürasyonu
+│   ├── lv_conf.h          # LVGL konfigürasyonu
+│   └── ui/
+│       ├── ui.h           # UI tanımları
+│       └── ui.c           # UI implementasyonu (4 ekran)
+├── SquareLineProject/      # SquareLine Studio proje dosyaları
+├── esp_32_s_3_touch_lcd.md # Donanım dokümantasyonu
+└── README.md               # Bu dosya
+```
+
+---
+
+## 🧪 Sensör Simülasyonu
+
+Şu anda gerçek sensör bağlantısı olmadığından **simülasyon modu** aktiftir:
+
+- Ölçüm süresi: **4 saniye**
+- Sonuç dağılımı:
+  - %70 ihtimalle **güvenli** (0.00 - 0.49‰)
+  - %30 ihtimalle **tehlikeli** (0.50 - 2.00‰)
+
+Simülasyonu devre dışı bırakmak için `main.cpp` içinde:
+```cpp
+#define SENSOR_SIMULATION_ENABLED false
+```
+
+---
+
+## 📦 Kütüphaneler
+
+| Kütüphane | Versiyon | Kullanım |
+|-----------|----------|----------|
+| [LovyanGFX](https://github.com/lovyan03/LovyanGFX) | ^1.1.16 | Display sürücüsü |
+| [LVGL](https://lvgl.io/) | ^8.3.11 | UI framework |
+| [ArduinoJson](https://arduinojson.org/) | ^6.21.3 | JSON işleme |
+
+---
+
+## � Gelecek Geliştirmeler
+
+- [ ] ZE30 Elektrokimyasal alkol sensörü entegrasyonu
+- [ ] SHT30 Nem sensörü ile nefes algılama
+- [ ] Fan kontrolü (tahliye sistemi)
+- [ ] WiFi üzerinden OTA güncelleme
+- [ ] Uber/Taksi QR kodu entegrasyonu
+- [ ] Çoklu dil desteği
+
+---
+
+## 📝 Lisans
+
+MIT License - Detaylar için [LICENSE](LICENSE) dosyasına bakın.
+
+---
+
+## 👨‍� Geliştirici
+
+**GoLabs Technology**
+
+---
+
+*Son Güncelleme: 08.12.2024*

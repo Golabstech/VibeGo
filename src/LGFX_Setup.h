@@ -1,128 +1,207 @@
+/**
+ * ============================================================
+ * AlkoMetric Kiosk - LGFX Display Configuration
+ * Platform: JC2432W328 (ESP32 + ST7789 + CST820)
+ * ============================================================
+ * 
+ * Display: 2.8" TFT LCD, 240x320, ST7789 (SPI)
+ * Touch: CST820 Capacitive (I2C)
+ * 
+ * Pin Mapping:
+ * - Display SPI: MOSI=13, SCLK=14, CS=15, DC=2, BL=27
+ * - Touch I2C: SDA=33, SCL=32, RST=25, INT=21
+ * ============================================================
+ */
+
+#ifndef LGFX_SETUP_H
+#define LGFX_SETUP_H
+
 #define LGFX_USE_V1
 #include <LovyanGFX.hpp>
-#include <lgfx/v1/platforms/esp32s3/Panel_RGB.hpp>
-#include <lgfx/v1/platforms/esp32s3/Bus_RGB.hpp>
+#include <Wire.h>
 
-class LGFX : public lgfx::LGFX_Device
-{
-#ifdef WOKWI
-    lgfx::Panel_ILI9341 _panel_instance;
-    lgfx::Bus_SPI       _bus_instance;
-#else
-    lgfx::v1::Panel_RGB     _panel_instance;
-    lgfx::v1::Bus_RGB       _bus_instance;
-    lgfx::v1::Touch_GT911   _touch_instance;
+// ============================================================
+// Pin Definitions (Can be overridden via build_flags)
+// ============================================================
+
+// Display Pins (ST7789 - SPI)
+#ifndef TFT_MOSI
+  #define TFT_MOSI 13
 #endif
+#ifndef TFT_SCLK
+  #define TFT_SCLK 14
+#endif
+#ifndef TFT_CS
+  #define TFT_CS 15
+#endif
+#ifndef TFT_DC
+  #define TFT_DC 2
+#endif
+#ifndef TFT_RST
+  #define TFT_RST -1  // Not connected or internal
+#endif
+#ifndef TFT_BL
+  #define TFT_BL 27
+#endif
+
+// Touch Pins (CST820 - I2C)
+#ifndef TOUCH_SDA
+  #define TOUCH_SDA 33
+#endif
+#ifndef TOUCH_SCL
+  #define TOUCH_SCL 32
+#endif
+#ifndef TOUCH_RST
+  #define TOUCH_RST 25
+#endif
+#ifndef TOUCH_INT
+  #define TOUCH_INT 21
+#endif
+
+// Screen Resolution (Landscape Mode)
+#ifndef SCREEN_WIDTH
+  #define SCREEN_WIDTH 320
+#endif
+#ifndef SCREEN_HEIGHT
+  #define SCREEN_HEIGHT 240
+#endif
+
+// ============================================================
+// LGFX Device Class
+// ============================================================
+class LGFX : public lgfx::LGFX_Device {
+private:
+  lgfx::Panel_ST7789 _panel_instance;
+  lgfx::Bus_SPI _bus_instance;
+  lgfx::Light_PWM _light_instance;
+  lgfx::Touch_CST816S _touch_instance;  // CST820 compatible with CST816S driver
 
 public:
-    LGFX(void)
+  LGFX(void) {
+    // ========================================
+    // SPI Bus Configuration
+    // ========================================
     {
-#ifdef WOKWI
-        {
-            auto cfg = _bus_instance.config();
-            cfg.spi_host = SPI2_HOST;
-            cfg.spi_mode = 0;
-            cfg.freq_write = 40000000;
-            cfg.freq_read  = 16000000;
-            cfg.pin_sclk = 12;
-            cfg.pin_mosi = 11;
-            cfg.pin_miso = 13;
-            cfg.pin_dc   = 9;
-            _bus_instance.config(cfg);
-            _panel_instance.setBus(&_bus_instance);
-        }
-
-        {
-            auto cfg = _panel_instance.config();
-            cfg.pin_cs   = 10;
-            cfg.pin_rst  = 14;
-            cfg.pin_busy = -1;
-            cfg.panel_width  = 240;
-            cfg.panel_height = 320;
-            cfg.offset_x     = 0;
-            cfg.offset_y     = 0;
-            _panel_instance.config(cfg);
-        }
-#else
-        {
-            auto cfg = _bus_instance.config();
-            cfg.panel = &_panel_instance;
-
-            // Pin configuration for JC4827W543 (Standard Sunton/Guitton ESP32-S3 RGB Pinout)
-            
-            cfg.pin_d0  = 8; // B0
-            cfg.pin_d1  = 3; // B1
-            cfg.pin_d2  = 46; // B2
-            cfg.pin_d3  = 9; // B3
-            cfg.pin_d4  = 1; // B4
-            
-            cfg.pin_d5  = 5; // G0
-            cfg.pin_d6  = 6; // G1
-            cfg.pin_d7  = 7; // G2
-            cfg.pin_d8  = 15; // G3
-            cfg.pin_d9  = 16; // G4
-            cfg.pin_d10 = 4; // G5
-            
-            cfg.pin_d11 = 45; // R0
-            cfg.pin_d12 = 48; // R1
-            cfg.pin_d13 = 47; // R2
-            cfg.pin_d14 = 21; // R3
-            cfg.pin_d15 = 14; // R4
-
-            cfg.pin_henable = 40;
-            cfg.pin_vsync   = 41;
-            cfg.pin_hsync   = 39;
-            cfg.pin_pclk    = 42;
-            cfg.freq_write  = 16000000;
-
-            cfg.hsync_polarity    = 0;
-            cfg.hsync_front_porch = 8;
-            cfg.hsync_pulse_width = 4;
-            cfg.hsync_back_porch  = 8;
-            
-            cfg.vsync_polarity    = 0;
-            cfg.vsync_front_porch = 8;
-            cfg.vsync_pulse_width = 4;
-            cfg.vsync_back_porch  = 8;
-
-            cfg.pclk_idle_high    = 1;
-            _bus_instance.config(cfg);
-            _panel_instance.setBus(&_bus_instance);
-        }
-
-        {
-            auto cfg = _panel_instance.config();
-            cfg.memory_width  = 480;
-            cfg.memory_height = 272;
-            cfg.panel_width   = 480;
-            cfg.panel_height  = 272;
-            cfg.offset_x      = 0;
-            cfg.offset_y      = 0;
-            _panel_instance.config(cfg);
-        }
-
-        {
-            auto cfg = _touch_instance.config();
-            cfg.x_min      = 0;
-            cfg.x_max      = 479;
-            cfg.y_min      = 0;
-            cfg.y_max      = 271;
-            cfg.pin_int    = -1; // Interrupt pin
-            cfg.pin_rst    = -1; // Reset pin
-            cfg.bus_shared = true; // Shared with other I2C devices?
-            cfg.offset_rotation = 0;
-            
-            // I2C pins for Touch (Commonly 19/20 or similar on S3)
-            cfg.i2c_port   = 1;
-            cfg.i2c_addr   = 0x5D; // Or 0x14
-            cfg.pin_sda    = 19;
-            cfg.pin_scl    = 20;
-            cfg.freq       = 400000;
-
-            _touch_instance.config(cfg);
-            _panel_instance.setTouch(&_touch_instance);
-        }
-#endif
-        setPanel(&_panel_instance);
+      auto cfg = _bus_instance.config();
+      
+      cfg.spi_host = VSPI_HOST;        // VSPI = SPI3
+      cfg.spi_mode = 0;                // SPI Mode 0
+      cfg.freq_write = 40000000;       // 40MHz write speed
+      cfg.freq_read = 16000000;        // 16MHz read speed
+      cfg.spi_3wire = false;
+      cfg.use_lock = true;
+      cfg.dma_channel = SPI_DMA_CH_AUTO;
+      
+      // Pin assignments
+      cfg.pin_sclk = TFT_SCLK;
+      cfg.pin_mosi = TFT_MOSI;
+      cfg.pin_miso = -1;               // Not used for display
+      cfg.pin_dc = TFT_DC;
+      
+      _bus_instance.config(cfg);
+      _panel_instance.setBus(&_bus_instance);
     }
+
+    // ========================================
+    // Panel Configuration (ST7789)
+    // ========================================
+    {
+      auto cfg = _panel_instance.config();
+      
+      cfg.pin_cs = TFT_CS;
+      cfg.pin_rst = TFT_RST;
+      cfg.pin_busy = -1;
+      
+      cfg.panel_width = SCREEN_WIDTH;
+      cfg.panel_height = SCREEN_HEIGHT;
+      cfg.memory_width = SCREEN_WIDTH;
+      cfg.memory_height = SCREEN_HEIGHT;
+      
+      cfg.offset_x = 0;
+      cfg.offset_y = 0;
+      cfg.offset_rotation = 0;
+      
+      cfg.dummy_read_pixel = 8;
+      cfg.dummy_read_bits = 1;
+      cfg.readable = true;
+      cfg.invert = false;             // JC2432W328: invert = false for correct colors
+      cfg.rgb_order = false;
+      cfg.dlen_16bit = false;
+      cfg.bus_shared = true;
+      
+      _panel_instance.config(cfg);
+    }
+
+    // ========================================
+    // Backlight Configuration (PWM)
+    // ========================================
+    {
+      auto cfg = _light_instance.config();
+      
+      cfg.pin_bl = TFT_BL;
+      cfg.invert = false;
+      cfg.freq = 44100;
+      cfg.pwm_channel = 0;
+      
+      _light_instance.config(cfg);
+      _panel_instance.setLight(&_light_instance);
+    }
+
+    // ========================================
+    // Touch Configuration (CST820/CST816S)
+    // ========================================
+    {
+      auto cfg = _touch_instance.config();
+      
+      cfg.x_min = 0;
+      cfg.x_max = SCREEN_WIDTH - 1;
+      cfg.y_min = 0;
+      cfg.y_max = SCREEN_HEIGHT - 1;
+      
+      cfg.pin_int = TOUCH_INT;
+      cfg.pin_rst = TOUCH_RST;
+      
+      cfg.bus_shared = false;
+      cfg.offset_rotation = 0;
+      
+      // I2C Configuration
+      cfg.i2c_port = 1;                // I2C port 1
+      cfg.i2c_addr = 0x15;             // CST820 default address
+      cfg.pin_sda = TOUCH_SDA;
+      cfg.pin_scl = TOUCH_SCL;
+      cfg.freq = 400000;               // 400kHz I2C
+      
+      _touch_instance.config(cfg);
+      _panel_instance.setTouch(&_touch_instance);
+    }
+
+    setPanel(&_panel_instance);
+  }
+
+  // ========================================
+  // Utility Methods
+  // ========================================
+  
+  /**
+   * Set backlight brightness (0-255)
+   */
+  void setBacklight(uint8_t brightness) {
+    setBrightness(brightness);
+  }
+
+  /**
+   * Turn backlight on (full brightness)
+   */
+  void backlightOn() {
+    setBrightness(255);
+  }
+
+  /**
+   * Turn backlight off
+   */
+  void backlightOff() {
+    setBrightness(0);
+  }
 };
+
+#endif // LGFX_SETUP_H

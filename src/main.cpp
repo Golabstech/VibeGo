@@ -1,320 +1,355 @@
-#ifdef ARDUINO
+/**
+ * ============================================================
+ * AlkoMetric / VibeGo Kiosk - Ana Program
+ * Platform: JC2432W328 (ESP32 + ST7789 + CST820)
+ * Display: 320x240 Landscape Mode
+ * 
+ * Features:
+ * - WiFi with Captive Portal (WiFiManager)
+ * - OTA Updates (ArduinoOTA)
+ * - Auto Brightness (LDR on GPIO34)
+ * - Sensor Simulation Mode
+ * ============================================================
+ */
+
 #include <Arduino.h>
-#include "LGFX_Setup.h"
 #include <lvgl.h>
-#include "lv_conf.h"
+#include "LGFX_Setup.h"
 #include "ui/ui.h"
+#include "wifi_handler.h"
+#include "ota_handler.h"
+#include "brightness.h"
 
-// OTA & WiFi Includes
-#include <WiFi.h>
-#include <ArduinoJson.h>
+// ============================================================
+// Firmware Version
+// ============================================================
+#define FIRMWARE_VERSION "1.0.0"
 
-// --- CONFIGURATION ---
-#define WIFI_SSID "YOUR_WIFI_SSID"     // <--- CHANGE THIS
-#define WIFI_PASS "YOUR_WIFI_PASSWORD" // <--- CHANGE THIS
-#define FIRMWARE_URL "https://raw.githubusercontent.com/Golabstech/VibeGo/master/firmware/firmware.bin"
-#define VERSION_URL "https://raw.githubusercontent.com/Golabstech/VibeGo/master/firmware/version.json"
-#define APP_VERSION "1.0.0"
+// ============================================================
+// Display Configuration (Landscape)
+// ============================================================
+#define DISPLAY_WIDTH  320
+#define DISPLAY_HEIGHT 240
+#define DISPLAY_ROTATION 1  // 1 = Landscape
 
+// ============================================================
+// Sensor Simulation
+// ============================================================
+#define SENSOR_SIMULATION_ENABLED true
+#define SIMULATION_DURATION_MS 4000
+#define BAC_THRESHOLD 0.50f
+
+// ============================================================
+// Service Mode (Hidden Settings Access)
+// ============================================================
+#define SERVICE_MODE_TAP_COUNT 5       // Number of taps on logo
+#define SERVICE_MODE_TAP_TIMEOUT 3000  // 3 seconds
+
+static int service_tap_count = 0;
+static uint32_t service_tap_start = 0;
+
+// ============================================================
+// Global Objects
+// ============================================================
 static LGFX lcd;
-
-/* Change to your screen resolution */
-#ifdef WOKWI
-static const uint32_t screenWidth  = 240;
-static const uint32_t screenHeight = 320;
-#define MQ3_PIN 4 
-#else
-static const uint32_t screenWidth  = 800;  // WaveShare 4.3"
-static const uint32_t screenHeight = 480;  // WaveShare 4.3"
-#define MQ3_PIN 4 
-#endif
-
 static lv_disp_draw_buf_t draw_buf;
-static lv_color_t buf[ screenWidth * 10 ];
+static lv_color_t buf[DISPLAY_WIDTH * 20];  // Reduced from 40 to 20 lines
 
-/* Display flushing */
-void my_disp_flush( lv_disp_drv_t *disp, const lv_area_t *area, lv_color_t *color_p )
-{
-    uint32_t w = ( area->x2 - area->x1 + 1 );
-    uint32_t h = ( area->y2 - area->y1 + 1 );
+// Simulation state
+static bool is_measuring = false;
+static uint32_t measurement_start_time = 0;
+
+// ============================================================
+// Brightness Callback
+// ============================================================
+void set_display_brightness(int level) {
+    lcd.setBrightness(level);
+}
+
+// ============================================================
+// LVGL Display Flush Callback
+// ============================================================
+void my_disp_flush(lv_disp_drv_t *disp_drv, const lv_area_t *area, lv_color_t *color_p) {
+    uint32_t w = (area->x2 - area->x1 + 1);
+    uint32_t h = (area->y2 - area->y1 + 1);
 
     lcd.startWrite();
-    lcd.setAddrWindow( area->x1, area->y1, w, h );
-    lcd.writePixels( (lgfx::rgb565_t *)&color_p->full, w * h );
+    lcd.setAddrWindow(area->x1, area->y1, w, h);
+    lcd.writePixels((lgfx::rgb565_t *)&color_p->full, w * h);
     lcd.endWrite();
 
-    lv_disp_flush_ready( disp );
+    lv_disp_flush_ready(disp_drv);
 }
 
-/* Read the touchpad */
-void my_touchpad_read( lv_indev_drv_t * indev_driver, lv_indev_data_t * data )
-{
+// ============================================================
+// LVGL Touch Read Callback
+// ============================================================
+void my_touchpad_read(lv_indev_drv_t *indev_drv, lv_indev_data_t *data) {
     uint16_t touchX, touchY;
-    bool touched = lcd.getTouch( &touchX, &touchY );
-
-    if( touched )
-    {
-        data->state = LV_INDEV_STATE_PR;
+    
+    if (lcd.getTouch(&touchX, &touchY)) {
+        data->state = LV_INDEV_STATE_PRESSED;
         data->point.x = touchX;
         data->point.y = touchY;
-    }
-    else
-    {
-        data->state = LV_INDEV_STATE_REL;
-    }
-}
-
-// --- OTA FUNCTIONS ---
-void connectWiFi() {
-    Serial.print("Connecting to WiFi");
-    lcd.fillScreen(0x0000);
-    lcd.setTextColor(0xFFFF);
-    lcd.setTextSize(2);
-    lcd.setCursor(10, 10);
-    lcd.println("Connecting to WiFi...");
-    lcd.println(WIFI_SSID);
-
-    WiFi.begin(WIFI_SSID, WIFI_PASS);
-    
-    int timeout = 0;
-    while (WiFi.status() != WL_CONNECTED && timeout < 20) { // 10 seconds timeout
-        delay(500);
-        Serial.print(".");
-        lcd.print(".");
-        timeout++;
-    }
-
-    if (WiFi.status() == WL_CONNECTED) {
-        Serial.println("\nConnected!");
-        lcd.println("\nConnected!");
-        lcd.println(WiFi.localIP());
     } else {
-        Serial.println("\nWiFi Connection Failed!");
-        lcd.println("\nConnection Failed!");
-        lcd.println("Skipping OTA...");
-        delay(2000);
+        data->state = LV_INDEV_STATE_RELEASED;
     }
 }
 
-bool isNewer(String current, String remote) {
-    int c_major, c_minor, c_patch;
-    int r_major, r_minor, r_patch;
-    if (sscanf(current.c_str(), "%d.%d.%d", &c_major, &c_minor, &c_patch) != 3) return false;
-    if (sscanf(remote.c_str(), "%d.%d.%d", &r_major, &r_minor, &r_patch) != 3) return false;
+// ============================================================
+// Sensor Simulation
+// ============================================================
+float generate_random_bac() {
+    randomSeed(analogRead(0) + millis());
+    int chance = random(100);
     
-    if (r_major > c_major) return true;
-    if (r_major < c_major) return false;
-    if (r_minor > c_minor) return true;
-    if (r_minor < c_minor) return false;
-    if (r_patch > c_patch) return true;
-    return false;
+    if (chance < 70) {
+        return (float)random(0, 50) / 100.0f;
+    } else {
+        return (float)random(50, 200) / 100.0f;
+    }
 }
 
-void checkOTA() {
-    if (WiFi.status() != WL_CONNECTED) return;
+void start_measurement_simulation() {
+    if (!SENSOR_SIMULATION_ENABLED) return;
+    is_measuring = true;
+    measurement_start_time = millis();
+    Serial.println("[SIM] Measurement started...");
+}
 
-    Serial.println("Checking for Update...");
-    lcd.println("Checking Update...");
-
-    WiFiClientSecure client;
-    client.setInsecure(); 
-
-    HTTPClient http;
-    http.begin(client, VERSION_URL);
-    int httpCode = http.GET();
-
-    if (httpCode == HTTP_CODE_OK) {
-        String payload = http.getString();
-        DynamicJsonDocument doc(1024);
-        deserializeJson(doc, payload);
+void update_measurement_simulation() {
+    if (!is_measuring) return;
+    
+    uint32_t elapsed = millis() - measurement_start_time;
+    int progress = (elapsed * 100) / SIMULATION_DURATION_MS;
+    if (progress > 100) progress = 100;
+    
+    extern lv_obj_t * ui_Measuring_Progress;
+    if (ui_Measuring_Progress != NULL) {
+        lv_bar_set_value(ui_Measuring_Progress, progress, LV_ANIM_ON);
+    }
+    
+    if (elapsed >= SIMULATION_DURATION_MS) {
+        is_measuring = false;
+        float bac = generate_random_bac();
+        Serial.printf("[SIM] BAC = %.2f\n", bac);
         
-        const char* remote_version = doc["version"];
-        const char* firmware_url = doc["url"]; // Use URL from JSON if available, else fallback
-
-        Serial.printf("Current: %s, Remote: %s\n", APP_VERSION, remote_version);
-        lcd.printf("Ver: %s -> %s\n", APP_VERSION, remote_version);
-
-        if (isNewer(APP_VERSION, String(remote_version))) {
-            Serial.println("New version available! Updating...");
-            lcd.println("Updating...");
-            
-            // Use URL from JSON if valid, otherwise use default
-            String url = (firmware_url && strlen(firmware_url) > 0) ? String(firmware_url) : String(FIRMWARE_URL);
-            
-            t_httpUpdate_return ret = httpUpdate.update(client, url);
-            
-            switch (ret) {
-                case HTTP_UPDATE_FAILED:
-                    Serial.printf("Update Failed: %s\n", httpUpdate.getLastErrorString().c_str());
-                    lcd.println("Update Failed");
-                    break;
-                case HTTP_UPDATE_NO_UPDATES:
-                    lcd.println("No Updates");
-                    break;
-                case HTTP_UPDATE_OK:
-                    lcd.println("Rebooting...");
-                    break;
-            }
+        if (bac < BAC_THRESHOLD) {
+            ui_show_result_safe(bac);
         } else {
-            Serial.println("System is up to date.");
-            lcd.println("Up to date.");
+            ui_show_result_danger(bac);
         }
-    } else {
-        Serial.printf("Version Check Failed: %d\n", httpCode);
-        lcd.println("Check Failed");
+        
+        lv_bar_set_value(ui_Measuring_Progress, 0, LV_ANIM_OFF);
     }
-    http.end();
-    
-    delay(2000);
 }
 
-// --- APP LOGIC ---
-enum AppState {
-    STATE_IDLE,
-    STATE_MEASURING,
-    STATE_RESULT
-};
+void screen_load_event_cb(lv_event_t * e) {
+    lv_obj_t * scr = lv_event_get_target(e);
+    extern lv_obj_t * ui_Measuring;
+    if (scr == ui_Measuring) {
+        start_measurement_simulation();
+    }
+}
 
-AppState appState = STATE_IDLE;
-unsigned long measureStartTime = 0;
-int maxAnalogValue = 0;
-const int THRESHOLD_START = 1500; 
-const int THRESHOLD_DANGER = 2000; 
-
-void setup()
-{
-    Serial.begin( 115200 );
-    Serial.println("Starting Setup...");
-
-    pinMode(MQ3_PIN, INPUT);
-
-    if (!lcd.init()) {
-        Serial.println("LGFX Init Failed!");
-    } else {
-        Serial.println("LGFX Initialized");
+// ============================================================
+// Service Mode Detection (5 taps on VIBEGO logo)
+// ============================================================
+void check_service_mode(lv_event_t * e) {
+    lv_event_code_t code = lv_event_get_code(e);
+    
+    // Use PRESSED event (code 21) since CLICKED doesn't fire
+    if (code != LV_EVENT_PRESSED) return;
+    
+    uint32_t now = millis();
+    
+    // Reset if timeout
+    if (now - service_tap_start > SERVICE_MODE_TAP_TIMEOUT) {
+        service_tap_count = 0;
     }
     
-    lcd.setRotation( 0 );
+    // First tap
+    if (service_tap_count == 0) {
+        service_tap_start = now;
+    }
+    
+    service_tap_count++;
+    Serial.printf("[LOGO] Tap count: %d/%d\n", service_tap_count, SERVICE_MODE_TAP_COUNT);
+    
+    // Check if enough taps
+    if (service_tap_count >= SERVICE_MODE_TAP_COUNT) {
+        Serial.println("[SERVICE] Entering Service Mode!");
+        service_tap_count = 0;
+        
+        // Update settings screen with current info
+        ui_settings_update_wifi(wifi_get_status_str(), wifi_get_ip().c_str());
+        ui_settings_update_brightness(brightness_get_level(), brightness_is_auto());
+        
+        // Show settings
+        ui_settings_show();
+    }
+}
+
+// ============================================================
+// Serial Command Handler
+// ============================================================
+void handle_serial_commands() {
+    if (Serial.available()) {
+        String cmd = Serial.readStringUntil('\n');
+        cmd.trim();
+        
+        if (cmd == "settings" || cmd == "service") {
+            Serial.println("[CMD] Opening Settings...");
+            ui_settings_update_wifi(wifi_get_status_str(), wifi_get_ip().c_str());
+            ui_settings_update_brightness(brightness_get_level(), brightness_is_auto());
+            ui_settings_show();
+        }
+        else if (cmd == "wifi_reset") {
+            Serial.println("[CMD] Resetting WiFi...");
+            wifi_reset();
+        }
+        else if (cmd == "wifi_portal") {
+            Serial.println("[CMD] Starting WiFi Portal...");
+            wifi_start_portal();
+        }
+        else if (cmd == "reboot") {
+            Serial.println("[CMD] Rebooting...");
+            ESP.restart();
+        }
+        else if (cmd == "status") {
+            Serial.println("=== STATUS ===");
+            Serial.printf("WiFi: %s\n", wifi_get_status_str());
+            Serial.printf("IP: %s\n", wifi_get_ip().c_str());
+            Serial.printf("SSID: %s\n", wifi_get_ssid().c_str());
+            Serial.printf("Signal: %d%%\n", wifi_get_signal_percent());
+            Serial.printf("Brightness: %d (Auto: %s)\n", brightness_get_level(), brightness_is_auto() ? "Yes" : "No");
+            Serial.printf("LDR Raw: %d\n", brightness_get_ldr_raw());
+            Serial.printf("Firmware: v%s\n", FIRMWARE_VERSION);
+        }
+        else if (cmd == "help") {
+            Serial.println("=== COMMANDS ===");
+            Serial.println("settings   - Open settings screen");
+            Serial.println("wifi_reset - Reset WiFi credentials");
+            Serial.println("wifi_portal- Start WiFi config portal");
+            Serial.println("reboot     - Restart device");
+            Serial.println("status     - Show system status");
+        }
+    }
+}
+
+// ============================================================
+// Setup
+// ============================================================
+void setup() {
+    Serial.begin(115200);
+    delay(500);
+    
+    Serial.println();
+    Serial.println("╔════════════════════════════════════════╗");
+    Serial.println("║      VIBEGO - AlkoMetric Kiosk         ║");
+    Serial.printf("║      Firmware: v%s                   ║\n", FIRMWARE_VERSION);
+    Serial.println("║      Platform: JC2432W328              ║");
+    Serial.println("╚════════════════════════════════════════╝");
+    Serial.println();
+
+    // Initialize Display
+    Serial.print("[INIT] Display...");
+    lcd.init();
+    lcd.setRotation(DISPLAY_ROTATION);
     lcd.setBrightness(255);
+    lcd.fillScreen(TFT_BLACK);
+    Serial.println(" OK");
 
-    // 1. Connect WiFi & Check OTA
-    #ifndef WOKWI // Skip WiFi in Wokwi for speed unless needed
-    connectWiFi();
-    checkOTA();
-    #endif
+    // Initialize Brightness (LDR)
+    Serial.print("[INIT] LDR Brightness...");
+    brightness_init();
+    brightness_set_callback(set_display_brightness);
+    Serial.println(" OK");
 
-    // 2. Init LVGL
+    // Initialize LVGL
+    Serial.print("[INIT] LVGL...");
     lv_init();
-    Serial.println("LVGL Initialized");
-
-    lv_disp_draw_buf_init( &draw_buf, buf, NULL, screenWidth * 10 );
-
-    static lv_disp_drv_t disp_drv;
-    lv_disp_drv_init( &disp_drv );
-    disp_drv.hor_res = screenWidth;
-    disp_drv.ver_res = screenHeight;
-    disp_drv.flush_cb = my_disp_flush;
-    disp_drv.draw_buf = &draw_buf;
-    lv_disp_drv_register( &disp_drv );
-
-    static lv_indev_drv_t indev_drv;
-    lv_indev_drv_init( &indev_drv );
-    indev_drv.type = LV_INDEV_TYPE_POINTER;
-    indev_drv.read_cb = my_touchpad_read;
-    lv_indev_drv_register( &indev_drv );
-
-    ui_init();
-    Serial.println("UI Initialized");
-}
-
-void loop()
-{
-    lv_timer_handler(); 
+    lv_disp_draw_buf_init(&draw_buf, buf, NULL, DISPLAY_WIDTH * 20);
     
-    int sensorValue = analogRead(MQ3_PIN);
-    
-    switch (appState) {
-        case STATE_IDLE:
-            if (lv_scr_act() == ui_Home) {
-                if (sensorValue > THRESHOLD_START) {
-                    Serial.println("Breath Detected! Starting Measurement...");
-                    lv_scr_load_anim(ui_Measuring, LV_SCR_LOAD_ANIM_FADE_ON, 500, 0, false);
-                    appState = STATE_MEASURING;
-                    measureStartTime = millis();
-                    maxAnalogValue = 0;
-                }
-            }
-            break;
-
-        case STATE_MEASURING:
-            if (sensorValue > maxAnalogValue) {
-                maxAnalogValue = sensorValue;
-            }
-            if (millis() - measureStartTime > 3000) {
-                Serial.printf("Measurement Done. Max Value: %d\n", maxAnalogValue);
-                
-                float promil = 0.0;
-                if (maxAnalogValue > 1000) {
-                    promil = (float)(maxAnalogValue - 1000) / 800.0; 
-                }
-                
-                char promilStr[10];
-                sprintf(promilStr, "%.2f", promil);
-
-                if (promil >= 0.50) {
-                    if (ui_Result_Danger_Value) lv_label_set_text(ui_Result_Danger_Value, promilStr);
-                    lv_scr_load_anim(ui_Result_Danger, LV_SCR_LOAD_ANIM_FADE_ON, 500, 0, false);
-                } else {
-                    if (ui_Result_Safe_Value) lv_label_set_text(ui_Result_Safe_Value, promilStr);
-                    lv_scr_load_anim(ui_Result_Safe, LV_SCR_LOAD_ANIM_FADE_ON, 500, 0, false);
-                }
-                
-                appState = STATE_RESULT;
-            }
-            break;
-
-        case STATE_RESULT:
-            if (lv_scr_act() == ui_Disclaimer || lv_scr_act() == ui_Home) {
-                appState = STATE_IDLE;
-            }
-            break;
-    }
-
-    delay( 5 );
-}
-
-#else // NATIVE / EMULATOR
-// ... (Keep existing emulator code)
-#include "lvgl.h"
-#include "lv_drivers/sdl/sdl.h"
-#include "ui/ui.h"
-#include <unistd.h>
-#include <time.h>
-
-int main(void)
-{
-    lv_init();
-    sdl_init();
-    static lv_disp_draw_buf_t disp_buf1;
-    static lv_color_t buf1_1[480 * 10];
-    lv_disp_draw_buf_init(&disp_buf1, buf1_1, NULL, 480 * 10);
     static lv_disp_drv_t disp_drv;
     lv_disp_drv_init(&disp_drv);
-    disp_drv.draw_buf = &disp_buf1;
-    disp_drv.flush_cb = sdl_display_flush;
-    disp_drv.hor_res = 480;
-    disp_drv.ver_res = 272;
+    disp_drv.hor_res = DISPLAY_WIDTH;
+    disp_drv.ver_res = DISPLAY_HEIGHT;
+    disp_drv.flush_cb = my_disp_flush;
+    disp_drv.draw_buf = &draw_buf;
     lv_disp_drv_register(&disp_drv);
-    static lv_indev_drv_t indev_drv_1;
-    lv_indev_drv_init(&indev_drv_1);
-    indev_drv_1.type = LV_INDEV_TYPE_POINTER;
-    indev_drv_1.read_cb = sdl_mouse_read;
-    lv_indev_drv_register(&indev_drv_1);
+    Serial.println(" OK");
+    
+    // Initialize Touch
+    Serial.print("[INIT] Touch...");
+    static lv_indev_drv_t indev_drv;
+    lv_indev_drv_init(&indev_drv);
+    indev_drv.type = LV_INDEV_TYPE_POINTER;
+    indev_drv.read_cb = my_touchpad_read;
+    lv_indev_drv_register(&indev_drv);
+    Serial.println(" OK");
+
+    // Initialize UI
+    Serial.print("[INIT] UI...");
     ui_init();
-    while(1) {
-        lv_timer_handler();
-        usleep(5000);
+    Serial.println(" OK");
+
+    // Setup screen event for simulation
+    extern lv_obj_t * ui_Measuring;
+    lv_obj_add_event_cb(ui_Measuring, screen_load_event_cb, LV_EVENT_SCREEN_LOADED, NULL);
+    
+    // Setup service mode detection on logo
+    extern lv_obj_t * ui_Home_Logo;
+    lv_obj_add_flag(ui_Home_Logo, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_clear_flag(ui_Home_Logo, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
+    lv_obj_add_event_cb(ui_Home_Logo, check_service_mode, LV_EVENT_ALL, NULL);
+    Serial.println("[INIT] Logo tap detection ready");
+
+    // Initialize WiFi - Start AP if no saved credentials
+    Serial.println("[INIT] WiFi...");
+    if (!wifi_init(false)) {
+        // No saved WiFi, start config portal in background
+        Serial.println("[WIFI] No saved network, starting AP...");
+        // Note: Portal will start when user requests via serial
     }
-    return 0;
+    
+    // LDR Debug
+    Serial.printf("[INIT] LDR Raw Value: %d\n", brightness_get_ldr_raw());
+
+    Serial.println();
+    Serial.println("[READY] System started!");
+    Serial.println("[INFO] Type 'help' for commands");
+    Serial.println();
 }
-#endif
+
+// ============================================================
+// Main Loop
+// ============================================================
+void loop() {
+    // LVGL
+    lv_timer_handler();
+    
+    // WiFi status update
+    wifi_update();
+    
+    // OTA (init when WiFi connected)
+    static bool ota_started = false;
+    if (wifi_get_status() == WIFI_STATUS_CONNECTED && !ota_started) {
+        ota_init();
+        ota_started = true;
+    }
+    ota_handle();
+    
+    // Brightness (auto)
+    brightness_update();
+    
+    // Sensor simulation
+    if (SENSOR_SIMULATION_ENABLED) {
+        update_measurement_simulation();
+    }
+    
+    // Serial commands
+    handle_serial_commands();
+    
+    delay(5);
+}
