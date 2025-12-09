@@ -14,11 +14,16 @@
 
 #include <Arduino.h>
 #include <lvgl.h>
+#include <esp_task_wdt.h>
 #include "LGFX_Setup.h"
 #include "ui/ui.h"
 #include "wifi_handler.h"
-#include "ota_handler.h"
+#include "http_ota.h"
 #include "brightness.h"
+#include "ntp_time.h"
+#include "data_logger.h"
+#include "web_server.h"
+#include "webhook_logger.h"
 
 // ============================================================
 // Firmware Version
@@ -40,20 +45,16 @@
 #define BAC_THRESHOLD 0.50f
 
 // ============================================================
-// Service Mode (Hidden Settings Access)
-// ============================================================
-#define SERVICE_MODE_TAP_COUNT 5       // Number of taps on logo
-#define SERVICE_MODE_TAP_TIMEOUT 3000  // 3 seconds
-
-static int service_tap_count = 0;
-static uint32_t service_tap_start = 0;
-
-// ============================================================
 // Global Objects
 // ============================================================
 static LGFX lcd;
 static lv_disp_draw_buf_t draw_buf;
-static lv_color_t buf[DISPLAY_WIDTH * 20];  // Reduced from 40 to 20 lines
+
+// Double buffering for smoother rendering (DMA can write one while CPU fills other)
+// Buffer size: 320 * 24 * 2 bytes * 2 buffers = ~30KB
+#define DRAW_BUF_LINES 24  // 1/10 of screen height
+static lv_color_t buf1[DISPLAY_WIDTH * DRAW_BUF_LINES];
+static lv_color_t buf2[DISPLAY_WIDTH * DRAW_BUF_LINES];
 
 // Simulation state
 static bool is_measuring = false;
@@ -132,9 +133,14 @@ void update_measurement_simulation() {
     if (elapsed >= SIMULATION_DURATION_MS) {
         is_measuring = false;
         float bac = generate_random_bac();
-        Serial.printf("[SIM] BAC = %.2f\n", bac);
+        bool is_safe = bac < BAC_THRESHOLD;
         
-        if (bac < BAC_THRESHOLD) {
+        Serial.printf("[SIM] BAC = %.2f (%s)\n", bac, is_safe ? "Safe" : "Danger");
+        
+        // Log the test result
+        logger_add_test(bac, is_safe);
+        
+        if (is_safe) {
             ui_show_result_safe(bac);
         } else {
             ui_show_result_danger(bac);
@@ -153,44 +159,6 @@ void screen_load_event_cb(lv_event_t * e) {
 }
 
 // ============================================================
-// Service Mode Detection (5 taps on VIBEGO logo)
-// ============================================================
-void check_service_mode(lv_event_t * e) {
-    lv_event_code_t code = lv_event_get_code(e);
-    
-    // Use PRESSED event (code 21) since CLICKED doesn't fire
-    if (code != LV_EVENT_PRESSED) return;
-    
-    uint32_t now = millis();
-    
-    // Reset if timeout
-    if (now - service_tap_start > SERVICE_MODE_TAP_TIMEOUT) {
-        service_tap_count = 0;
-    }
-    
-    // First tap
-    if (service_tap_count == 0) {
-        service_tap_start = now;
-    }
-    
-    service_tap_count++;
-    Serial.printf("[LOGO] Tap count: %d/%d\n", service_tap_count, SERVICE_MODE_TAP_COUNT);
-    
-    // Check if enough taps
-    if (service_tap_count >= SERVICE_MODE_TAP_COUNT) {
-        Serial.println("[SERVICE] Entering Service Mode!");
-        service_tap_count = 0;
-        
-        // Update settings screen with current info
-        ui_settings_update_wifi(wifi_get_status_str(), wifi_get_ip().c_str());
-        ui_settings_update_brightness(brightness_get_level(), brightness_is_auto());
-        
-        // Show settings
-        ui_settings_show();
-    }
-}
-
-// ============================================================
 // Serial Command Handler
 // ============================================================
 void handle_serial_commands() {
@@ -198,13 +166,7 @@ void handle_serial_commands() {
         String cmd = Serial.readStringUntil('\n');
         cmd.trim();
         
-        if (cmd == "settings" || cmd == "service") {
-            Serial.println("[CMD] Opening Settings...");
-            ui_settings_update_wifi(wifi_get_status_str(), wifi_get_ip().c_str());
-            ui_settings_update_brightness(brightness_get_level(), brightness_is_auto());
-            ui_settings_show();
-        }
-        else if (cmd == "wifi_reset") {
+        if (cmd == "wifi_reset") {
             Serial.println("[CMD] Resetting WiFi...");
             wifi_reset();
         }
@@ -218,21 +180,37 @@ void handle_serial_commands() {
         }
         else if (cmd == "status") {
             Serial.println("=== STATUS ===");
+            Serial.printf("Firmware: v%s\n", http_ota_get_version());
             Serial.printf("WiFi: %s\n", wifi_get_status_str());
             Serial.printf("IP: %s\n", wifi_get_ip().c_str());
             Serial.printf("SSID: %s\n", wifi_get_ssid().c_str());
             Serial.printf("Signal: %d%%\n", wifi_get_signal_percent());
             Serial.printf("Brightness: %d (Auto: %s)\n", brightness_get_level(), brightness_is_auto() ? "Yes" : "No");
             Serial.printf("LDR Raw: %d\n", brightness_get_ldr_raw());
-            Serial.printf("Firmware: v%s\n", FIRMWARE_VERSION);
+        }
+        else if (cmd == "update" || cmd == "ota") {
+            Serial.println("[CMD] Checking for updates...");
+            http_ota_force_update();
+        }
+        else if (cmd == "version") {
+            Serial.printf("Firmware: v%s\n", http_ota_get_version());
         }
         else if (cmd == "help") {
             Serial.println("=== COMMANDS ===");
-            Serial.println("settings   - Open settings screen");
-            Serial.println("wifi_reset - Reset WiFi credentials");
-            Serial.println("wifi_portal- Start WiFi config portal");
-            Serial.println("reboot     - Restart device");
-            Serial.println("status     - Show system status");
+            Serial.println("status      - Show system status");
+            Serial.println("update/ota  - Check and install updates");
+            Serial.println("version     - Show firmware version");
+            Serial.println("wifi_portal - Start WiFi config portal");
+            Serial.println("wifi_reset  - Reset WiFi credentials");
+            Serial.println("reboot      - Restart device");
+            Serial.println("dashboard   - Show web panel URL");
+        }
+        else if (cmd == "dashboard") {
+            if (wifi_get_status() == WIFI_STATUS_CONNECTED) {
+                Serial.printf("Dashboard: http://%s/\n", wifi_get_ip().c_str());
+            } else {
+                Serial.println("WiFi not connected");
+            }
         }
     }
 }
@@ -269,7 +247,9 @@ void setup() {
     // Initialize LVGL
     Serial.print("[INIT] LVGL...");
     lv_init();
-    lv_disp_draw_buf_init(&draw_buf, buf, NULL, DISPLAY_WIDTH * 20);
+    
+    // Double buffering: DMA writes buf1 while CPU fills buf2, then swap
+    lv_disp_draw_buf_init(&draw_buf, buf1, buf2, DISPLAY_WIDTH * DRAW_BUF_LINES);
     
     static lv_disp_drv_t disp_drv;
     lv_disp_drv_init(&disp_drv);
@@ -297,21 +277,37 @@ void setup() {
     // Setup screen event for simulation
     extern lv_obj_t * ui_Measuring;
     lv_obj_add_event_cb(ui_Measuring, screen_load_event_cb, LV_EVENT_SCREEN_LOADED, NULL);
-    
-    // Setup service mode detection on logo
-    extern lv_obj_t * ui_Home_Logo;
-    lv_obj_add_flag(ui_Home_Logo, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_clear_flag(ui_Home_Logo, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
-    lv_obj_add_event_cb(ui_Home_Logo, check_service_mode, LV_EVENT_ALL, NULL);
-    Serial.println("[INIT] Logo tap detection ready");
 
     // Initialize WiFi - Start AP if no saved credentials
     Serial.println("[INIT] WiFi...");
     if (!wifi_init(false)) {
-        // No saved WiFi, start config portal in background
-        Serial.println("[WIFI] No saved network, starting AP...");
-        // Note: Portal will start when user requests via serial
+        Serial.println("[WIFI] No saved network, use 'wifi_portal' command");
     }
+    
+    // Initialize NTP (after WiFi)
+    if (wifi_get_status() == WIFI_STATUS_CONNECTED) {
+        ntp_init();
+    }
+    
+    // Initialize Data Logger (SPIFFS)
+    Serial.print("[INIT] Logger...");
+    if (logger_init()) {
+        Serial.println(" OK");
+    } else {
+        Serial.println(" FAILED");
+    }
+    
+    // Initialize Web Server (after WiFi)
+    if (wifi_get_status() == WIFI_STATUS_CONNECTED) {
+        web_server_init();
+        webhook_init();
+    }
+    
+    // Initialize Watchdog Timer (30 seconds)
+    Serial.print("[INIT] Watchdog...");
+    esp_task_wdt_init(30, true);
+    esp_task_wdt_add(NULL);
+    Serial.println(" OK (30s)");
     
     // LDR Debug
     Serial.printf("[INIT] LDR Raw Value: %d\n", brightness_get_ldr_raw());
@@ -319,6 +315,9 @@ void setup() {
     Serial.println();
     Serial.println("[READY] System started!");
     Serial.println("[INFO] Type 'help' for commands");
+    if (wifi_get_status() == WIFI_STATUS_CONNECTED) {
+        Serial.printf("[WEB] Dashboard: http://%s/\n", wifi_get_ip().c_str());
+    }
     Serial.println();
 }
 
@@ -326,22 +325,32 @@ void setup() {
 // Main Loop
 // ============================================================
 void loop() {
+    // Reset Watchdog Timer
+    esp_task_wdt_reset();
+    
     // LVGL
     lv_timer_handler();
     
     // WiFi status update
     wifi_update();
     
-    // OTA (init when WiFi connected)
-    static bool ota_started = false;
-    if (wifi_get_status() == WIFI_STATUS_CONNECTED && !ota_started) {
-        ota_init();
-        ota_started = true;
+    // Delayed init: Start services when WiFi connects
+    static bool services_started = false;
+    if (!services_started && wifi_get_status() == WIFI_STATUS_CONNECTED) {
+        ntp_init();
+        web_server_init();
+        webhook_init();
+        services_started = true;
     }
-    ota_handle();
     
-    // Brightness (auto)
+    // HTTP OTA (GitHub - check every hour)
+    http_ota_check_periodic();
+    
+    // Brightness (auto LDR)
     brightness_update();
+    
+    // Webhook queue sync check
+    webhook_update();
     
     // Sensor simulation
     if (SENSOR_SIMULATION_ENABLED) {

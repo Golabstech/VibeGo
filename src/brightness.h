@@ -64,14 +64,17 @@ int brightness_read_ldr() {
 
 /**
  * Map LDR value to brightness
- * Circuit: 3.3V -> R15 -> GPIO34 -> LDR -> GND
- * Dark = High LDR resistance = LOW voltage = LOW ADC value
- * Bright = Low LDR resistance = HIGH voltage = HIGH ADC value
+ * 
+ * Measured values on JC2432W328:
+ * - Dark room:  ~0.8V  → ADC ~990  → Need LOW brightness
+ * - Bright:     ~0.03V → ADC ~37   → Need HIGH brightness
+ * 
+ * So we need INVERTED mapping: Low ADC = Bright room = High brightness
  */
 int brightness_ldr_to_level(int ldr_value) {
-    // LDR high value = bright environment = need high display brightness
-    // LDR low value = dark environment = need low display brightness
-    int brightness = map(ldr_value, 0, 4095, BRIGHTNESS_MIN, BRIGHTNESS_MAX);
+    // INVERTED: Low ADC value = bright environment = high display brightness
+    // High ADC value = dark environment = low display brightness
+    int brightness = map(ldr_value, 0, 4095, BRIGHTNESS_MAX, BRIGHTNESS_MIN);
     return constrain(brightness, BRIGHTNESS_MIN, BRIGHTNESS_MAX);
 }
 
