@@ -1,5 +1,34 @@
 # 📋 VibeGo - Değişiklik Günlüğü (Changelog)
 
+## v1.4.0 (09.12.2024)
+
+### 🎬 Boot Splash Ekranı
+
+- **Golabs Logo:** Firma logosu C array formatına dönüştürüldü (150x150px)
+- **Animasyonlu Giriş:** Logo fade-in animasyonu (800ms)
+- **Progress Bar:** 3 saniyelik yükleme animasyonu
+- **Versiyon Gösterimi:** Ekranın altında firmware versiyonu
+- **Otomatik Geçiş:** Yükleme tamamlandığında Disclaimer ekranına fade geçiş
+
+### ⚖️ Yasal & UI Güncellemeleri
+
+- **Disclaimer Metni:** "Eğlence" ifadesi kaldırıldı, yasal uyarılar güçlendirildi.
+- **Logo Düzeltmesi:** Aspect ratio sorunu giderildi (100x59 -> 150x150 kare).
+- **Temizlik:** "Eğlence Alkolmetresi" alt başlığı kaldırıldı.
+
+### 📁 Yeni Dosyalar
+
+- **`src/ui/golabs_logo.c`** - LVGL RGB565 formatında logo (150x150px)
+
+### 🛠️ Teknik Değişiklikler
+
+- **ui.h:** Splash screen extern declarations eklendi
+- **ui.c:** `ui_Splash_screen_init()` fonksiyonu eklendi
+- **ui_init:** Başlangıç ekranı Disclaimer → Splash olarak değiştirildi
+- **LVGL Timer:** Progress bar animasyonu için timer kullanımı
+
+---
+
 ## v1.3.0 (09.12.2024)
 
 ### 🔲 QR Kod Entegrasyonu

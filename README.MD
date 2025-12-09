@@ -1,19 +1,56 @@
 # 🍺 VibeGo - AlkoMetric Kiosk
 
-**Eğlence Amaçlı Akıllı Alkolmetre Kiosk Sistemi**
+**Akıllı Alkolmetre Kiosk Sistemi**
 
 ![Platform](https://img.shields.io/badge/Platform-ESP32-blue)
 ![Display](https://img.shields.io/badge/Display-JC2432W328-green)
 ![Framework](https://img.shields.io/badge/Framework-Arduino%20%2B%20LVGL-orange)
+![Version](https://img.shields.io/badge/Version-1.4.0-purple)
 ![License](https://img.shields.io/badge/License-MIT-yellow)
 
 ---
 
 ## 📋 Proje Özeti
 
-VibeGo, bar ve eğlence mekanları için tasarlanmış, modern dokunmatik ekranlı bir alkolmetre kiosk sistemidir. Kullanıcılar nefes üfleyerek kandaki tahmini alkol oranını (BAC) öğrenebilir.
+VibeGo, bar ve mekanlar için tasarlanmış, modern dokunmatik ekranlı bir alkolmetre kiosk sistemidir. Kullanıcılar nefes üfleyerek kandaki tahmini alkol oranını (BAC) öğrenebilir.
 
-> ⚠️ **Yasal Uyarı:** Bu cihaz yalnızca eğlence amaçlıdır. Sonuçların tıbbi veya yasal geçerliliği yoktur. Alkol aldıysanız kesinlikle araç kullanmayınız!
+> ⚠️ **DİKKAT:** Bu cihaz yasal veya tıbbi ölçüm yapmaz. Sonuçlar tahminidir. Alkol aldıysanız **KESİNLİKLE ARAÇ KULLANMAYIN!**
+
+---
+
+## ✨ Güncel Özellikler (v1.4.0)
+
+### 🎬 Boot Splash Ekranı
+- Golabs logosu ile profesyonel açılış ekranı
+- Animasyonlu progress bar
+- Versiyon gösterimi
+
+### 🔲 QR Kod & Sponsor Sistemi
+- Result ekranında dinamik QR kod gösterimi
+- QR tarama ile sponsor URL'ine yönlendirme (Uber, BiTaksi, Bolt vb.)
+- Tarama istatistikleri ve sayaç
+- Web panelden sponsor ayarları yönetimi
+
+### 🌐 Web Yönetim Paneli
+- **4 Sekmeli Dashboard:** Anasayfa, WiFi, Ayarlar, Sponsor
+- Günlük istatistikler ve son test kayıtları
+- Cihaz bilgisi (IP, firmware, uptime, sinyal gücü)
+- Parlaklık kontrolü (manuel/otomatik LDR)
+
+### 📶 WiFi AP+STA Modu
+- Daima erişilebilir Access Point (`VibeGo` / `12345678`)
+- Web üzerinden ağ tarama ve bağlantı
+- Hibrit mod: AP ve Client aynı anda aktif
+
+### ☁️ Cloud Entegrasyonu
+- Make.com webhook ile Google Sheets entegrasyonu
+- Offline kuyruk sistemi
+- Ayarlanabilir sync süresi (hemen, dakika, saat, gün)
+
+### ⏰ Zaman & Güvenlik
+- NTP senkronizasyonu (Türkiye timezone)
+- Watchdog Timer (30sn timeout)
+- HTTP OTA otomatik güncelleme
 
 ---
 
@@ -58,13 +95,10 @@ VibeGo, bar ve eğlence mekanları için tasarlanmış, modern dokunmatik ekranl
 ```
 ┌─────────────┐     ┌─────────────┐     ┌─────────────┐     ┌─────────────┐
 │  DISCLAIMER │ ──► │    HOME     │ ──► │  MEASURING  │ ──► │   RESULT    │
-│  Yasal Uyarı│     │  Ana Menü   │     │   Ölçüm     │     │   Sonuç     │
+│  Yasal Uyarı│     │  Ana Menü   │     │   Ölçüm     │     │  Sonuç + QR │
 │             │     │             │     │             │     │             │
-│  [KABUL ET] │     │ [TESTE BAŞ] │     │  (Spinner)  │     │  ✓ 0.15‰   │
+│  [KABUL ET] │     │ [TESTE BAŞ] │     │  (Spinner)  │     │ [YENİ TEST] │
 └─────────────┘     └─────────────┘     └─────────────┘     └─────────────┘
-                                                                   │
-                                                                   ▼
-                                                            [YENİ TEST]
 ```
 
 ### Tema: Dark Mode
@@ -80,7 +114,7 @@ VibeGo, bar ve eğlence mekanları için tasarlanmış, modern dokunmatik ekranl
 
 ---
 
-## � Kurulum
+## 🚀 Kurulum
 
 ### Gereksinimler
 
@@ -108,33 +142,43 @@ pio device monitor --port COM14 --baud 115200
 ```
 VibeGo/
 ├── platformio.ini          # PlatformIO konfigürasyonu
+├── CHANGELOG.md            # Versiyon geçmişi
 ├── src/
-│   ├── main.cpp           # Ana program + sensör simülasyonu
-│   ├── LGFX_Setup.h       # Display/Touch sürücü konfigürasyonu
-│   ├── lv_conf.h          # LVGL konfigürasyonu
+│   ├── main.cpp            # Ana program
+│   ├── LGFX_Setup.h        # Display/Touch sürücüsü
+│   ├── lv_conf.h           # LVGL konfigürasyonu
+│   ├── wifi_handler.h      # WiFi AP+STA modülü
+│   ├── http_ota.h          # HTTP OTA güncelleme
+│   ├── brightness.h        # LDR parlaklık modülü
+│   ├── ntp_time.h          # NTP zaman modülü
+│   ├── data_logger.h       # SPIFFS veri loglama
+│   ├── web_server.h        # Web yönetim paneli
+│   ├── webhook_logger.h    # Make.com entegrasyonu
+│   ├── sponsor_manager.h   # Sponsor/QR yönetimi
 │   └── ui/
-│       ├── ui.h           # UI tanımları
-│       └── ui.c           # UI implementasyonu (4 ekran)
-├── SquareLineProject/      # SquareLine Studio proje dosyaları
-├── esp_32_s_3_touch_lcd.md # Donanım dokümantasyonu
-└── README.md               # Bu dosya
+│       ├── ui.h            # UI tanımları
+│       └── ui.c            # UI implementasyonu
+├── SquareLineProject/       # SquareLine Studio dosyaları
+└── firmware/                # Build çıktıları
 ```
 
 ---
 
-## 🧪 Sensör Simülasyonu
+## 🎯 Gelecek Geliştirmeler
 
-Şu anda gerçek sensör bağlantısı olmadığından **simülasyon modu** aktiftir:
+Detaylı ticarileşme planı için: **[ROADMAP.md](ROADMAP.md)**
 
-- Ölçüm süresi: **4 saniye**
-- Sonuç dağılımı:
-  - %70 ihtimalle **güvenli** (0.00 - 0.49‰)
-  - %30 ihtimalle **tehlikeli** (0.50 - 2.00‰)
+### Yakın Dönem (Q1 2025)
+- [ ] ZE30 elektrokimyasal alkol sensörü
+- [ ] SHT30 nem sensörü (nefes algılama)
+- [ ] Fan PWM kontrolü
+- [ ] Boot splash animasyonu
 
-Simülasyonu devre dışı bırakmak için `main.cpp` içinde:
-```cpp
-#define SENSOR_SIMULATION_ENABLED false
-```
+### Orta Dönem (Q2-Q3 2025)
+- [ ] Reklam & Sponsor sistemi
+- [ ] Çoklu dil desteği (TR/EN/DE/RU)
+- [ ] Sesli geri bildirim
+- [ ] Merkezi yönetim paneli
 
 ---
 
@@ -148,14 +192,17 @@ Simülasyonu devre dışı bırakmak için `main.cpp` içinde:
 
 ---
 
-## � Gelecek Geliştirmeler
+## 🔧 Serial Komutları
 
-- [ ] ZE30 Elektrokimyasal alkol sensörü entegrasyonu
-- [ ] SHT30 Nem sensörü ile nefes algılama
-- [ ] Fan kontrolü (tahliye sistemi)
-- [ ] WiFi üzerinden OTA güncelleme
-- [ ] Uber/Taksi QR kodu entegrasyonu
-- [ ] Çoklu dil desteği
+| Komut | Açıklama |
+|-------|----------|
+| `status` | Sistem durumunu göster |
+| `dashboard` | Web panel URL'sini göster |
+| `wifi_portal` | WiFi ayar portalını başlat |
+| `wifi_reset` | WiFi ayarlarını sıfırla |
+| `check_update` | OTA güncelleme kontrolü |
+| `reboot` | Cihazı yeniden başlat |
+| `help` | Komut listesi |
 
 ---
 
@@ -165,10 +212,10 @@ MIT License - Detaylar için [LICENSE](LICENSE) dosyasına bakın.
 
 ---
 
-## 👨‍� Geliştirici
+## 👨‍💻 Geliştirici
 
 **GoLabs Technology**
 
 ---
 
-*Son Güncelleme: 08.12.2024*
+*Son Güncelleme: 09.12.2024 | v1.3.0*

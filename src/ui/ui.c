@@ -9,9 +9,22 @@
 #include <stdio.h>
 #include <string.h>
 
+// External logo image
+LV_IMG_DECLARE(golabs_logo);
+
 // ============================================================
 // Variable Definitions
 // ============================================================
+
+// Splash Screen
+lv_obj_t * ui_Splash;
+lv_obj_t * ui_Splash_Logo;
+lv_obj_t * ui_Splash_Title;
+lv_obj_t * ui_Splash_Subtitle;
+lv_obj_t * ui_Splash_Progress;
+lv_obj_t * ui_Splash_Version;
+static lv_timer_t * splash_timer = NULL;
+static int splash_progress = 0;
 
 // Disclaimer Screen
 lv_obj_t * ui_Disclaimer;
@@ -65,6 +78,67 @@ static void ui_event_new_test_btn(lv_event_t * e) {
     }
 }
 
+// Splash screen timer callback
+static void splash_timer_cb(lv_timer_t * timer) {
+    splash_progress += 5;
+    if (splash_progress > 100) splash_progress = 100;
+    
+    lv_bar_set_value(ui_Splash_Progress, splash_progress, LV_ANIM_ON);
+    
+    if (splash_progress >= 100) {
+        lv_timer_del(timer);
+        splash_timer = NULL;
+        lv_scr_load_anim(ui_Disclaimer, LV_SCR_LOAD_ANIM_FADE_ON, 500, 0, false);
+    }
+}
+
+// ============================================================
+// SCREEN: Splash
+// ============================================================
+void ui_Splash_screen_init(void) {
+    ui_Splash = lv_obj_create(NULL);
+    lv_obj_clear_flag(ui_Splash, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_style_bg_color(ui_Splash, lv_color_hex(UI_COLOR_BG_DARK), 0);
+
+    // Logo image (Golabs) - positioned in upper-center area
+    ui_Splash_Logo = lv_img_create(ui_Splash);
+    lv_img_set_src(ui_Splash_Logo, &golabs_logo);
+    lv_obj_align(ui_Splash_Logo, LV_ALIGN_CENTER, 0, -40);
+    // Note: Logo is displayed as-is (RGB565 with dark background baked in)
+
+    // Title removed - logo already contains "GOLABS" text
+    ui_Splash_Title = NULL;
+    
+    // Subtitle - Developer credit
+    ui_Splash_Subtitle = lv_label_create(ui_Splash);
+    lv_label_set_text(ui_Splash_Subtitle, "Developed by Golabs A.S.");
+    lv_obj_set_style_text_font(ui_Splash_Subtitle, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(ui_Splash_Subtitle, lv_color_hex(UI_COLOR_TEXT_MUTED), 0);
+    lv_obj_align(ui_Splash_Subtitle, LV_ALIGN_CENTER, 0, 45);
+
+    // Progress bar
+    ui_Splash_Progress = lv_bar_create(ui_Splash);
+    lv_obj_set_size(ui_Splash_Progress, 200, 8);
+    lv_obj_align(ui_Splash_Progress, LV_ALIGN_BOTTOM_MID, 0, -50);
+    lv_bar_set_range(ui_Splash_Progress, 0, 100);
+    lv_bar_set_value(ui_Splash_Progress, 0, LV_ANIM_OFF);
+    lv_obj_set_style_bg_color(ui_Splash_Progress, lv_color_hex(UI_COLOR_PANEL), LV_PART_MAIN);
+    lv_obj_set_style_bg_color(ui_Splash_Progress, lv_color_hex(UI_COLOR_CYAN), LV_PART_INDICATOR);
+    lv_obj_set_style_radius(ui_Splash_Progress, 4, LV_PART_MAIN);
+    lv_obj_set_style_radius(ui_Splash_Progress, 4, LV_PART_INDICATOR);
+
+    // Version
+    ui_Splash_Version = lv_label_create(ui_Splash);
+    lv_label_set_text(ui_Splash_Version, "v1.4.0");
+    lv_obj_set_style_text_font(ui_Splash_Version, &lv_font_montserrat_10, 0);
+    lv_obj_set_style_text_color(ui_Splash_Version, lv_color_hex(UI_COLOR_TEXT_MUTED), 0);
+    lv_obj_align(ui_Splash_Version, LV_ALIGN_BOTTOM_MID, 0, -30);
+
+    // Start progress timer (every 100ms, total 3 seconds for 100%)
+    splash_progress = 0;
+    splash_timer = lv_timer_create(splash_timer_cb, 150, NULL);
+}
+
 // ============================================================
 // SCREEN: Disclaimer
 // ============================================================
@@ -95,9 +169,9 @@ void ui_Disclaimer_screen_init(void) {
     lv_label_set_long_mode(ui_Disclaimer_Text, LV_LABEL_LONG_WRAP);
     lv_obj_set_width(ui_Disclaimer_Text, 270);
     lv_label_set_text(ui_Disclaimer_Text, 
-        "Bu cihaz sadece eglence amaclidir.\n"
-        "Sonuclar tibbi/yasal gecerlilik tasimaz.\n"
-        "Alkol aldiysaniz arac kullanmayiniz!");
+        "DIKKAT: Bu cihaz yasal veya tibbi\n"
+        "olcum yapmaz. Sonuclar tahminidir.\n"
+        "Alkol aldiysaniz ARAC KULLANMAYIN!");
     lv_obj_set_style_text_color(ui_Disclaimer_Text, lv_color_hex(UI_COLOR_TEXT_BODY), 0);
     lv_obj_set_style_text_font(ui_Disclaimer_Text, &lv_font_montserrat_12, 0);
     lv_obj_set_style_text_align(ui_Disclaimer_Text, LV_TEXT_ALIGN_CENTER, 0);
@@ -418,10 +492,12 @@ void ui_init(void) {
         &lv_font_montserrat_14);
     lv_disp_set_theme(dispp, theme);
 
+    ui_Splash_screen_init();
     ui_Disclaimer_screen_init();
     ui_Home_screen_init();
     ui_Measuring_screen_init();
     ui_Result_screen_init();
 
-    lv_disp_load_scr(ui_Disclaimer);
+    // Start with Splash screen
+    lv_disp_load_scr(ui_Splash);
 }

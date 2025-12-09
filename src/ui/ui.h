@@ -38,6 +38,14 @@ extern "C" {
 // Screen Objects
 // ============================================================
 
+// SCREEN: Splash
+extern lv_obj_t * ui_Splash;
+extern lv_obj_t * ui_Splash_Logo;
+extern lv_obj_t * ui_Splash_Title;
+extern lv_obj_t * ui_Splash_Subtitle;
+extern lv_obj_t * ui_Splash_Progress;
+extern lv_obj_t * ui_Splash_Version;
+
 // SCREEN: Disclaimer
 extern lv_obj_t * ui_Disclaimer;
 extern lv_obj_t * ui_Disclaimer_Panel;
@@ -72,6 +80,7 @@ extern lv_obj_t * ui_Result_QR_Title;
 // ============================================================
 // Function Prototypes
 // ============================================================
+void ui_Splash_screen_init(void);
 void ui_Disclaimer_screen_init(void);
 void ui_Home_screen_init(void);
 void ui_Measuring_screen_init(void);
