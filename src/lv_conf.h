@@ -61,7 +61,7 @@
 
 // Disabled fonts (save ~100KB)
 #define LV_FONT_MONTSERRAT_8 0
-#define LV_FONT_MONTSERRAT_10 0
+#define LV_FONT_MONTSERRAT_10 1
 #define LV_FONT_MONTSERRAT_18 0
 #define LV_FONT_MONTSERRAT_22 0
 #define LV_FONT_MONTSERRAT_24 0
@@ -108,7 +108,7 @@
 #define LV_USE_BAR 1
 #define LV_USE_BTN 1
 #define LV_USE_BTNMATRIX 0
-#define LV_USE_CANVAS 0
+#define LV_USE_CANVAS 1
 #define LV_USE_CHECKBOX 0
 #define LV_USE_DROPDOWN 0
 #define LV_USE_IMG 1
@@ -157,7 +157,7 @@
 /*================
    OTHER
  *================*/
-#define LV_USE_QRCODE 0
+#define LV_USE_QRCODE 1
 #define LV_USE_SNAPSHOT 0
 #define LV_USE_MONKEY 0
 

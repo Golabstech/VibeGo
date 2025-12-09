@@ -1,8 +1,9 @@
 # 🗺️ VibeGo - Proje Haritası
 
-**Son Güncelleme:** 08.12.2024  
+**Son Güncelleme:** 09.12.2024  
+**Sürüm:** v1.1.0  
 **Durum:** Geliştirme Aşaması (Simülasyon Modu)  
-**Platform:** JC2432W328
+**Platform:** JC2432W328 (ESP32-WROOM-32)
 
 ---
 
@@ -19,6 +20,14 @@
 | Sensör Simülasyonu | ✅ | 4sn ölçüm, rastgele sonuç |
 | Dark Theme | ✅ | Modern lacivert/mavi tema |
 | Geçiş Animasyonları | ✅ | Fade efektleri |
+| WiFi Yönetimi | ✅ | WiFiManager Captive Portal |
+| Otomatik Parlaklık | ✅ | LDR sensör (GPIO34) |
+| Web Yönetim Paneli | ✅ | Responsive dashboard |
+| SPIFFS Veri Loglama | ✅ | Son 100 test kaydı |
+| NTP Zaman Sync | ✅ | UTC+3 Türkiye |
+| HTTP OTA | ✅ | GitHub firmware güncellemesi |
+| Watchdog Timer | ✅ | 30sn timeout |
+| Cloud Sync | ✅ | Make.com → Google Sheets |
 
 ### 🔄 Devam Eden
 
@@ -31,9 +40,12 @@
 
 | Özellik | Öncelik | Açıklama |
 |---------|---------|----------|
-| QR Kod | Orta | Uber/Taksi yönlendirme |
-| WiFi OTA | Düşük | Kablosuz güncelleme |
-| Veri Loglama | Düşük | SD kart desteği |
+| ZE30 Alkol Sensörü | Yüksek | Gerçek ölçüm entegrasyonu |
+| SHT30 Nem Sensörü | Yüksek | Ortam nem/sıcaklık |
+| Fan PWM Kontrolü | Orta | Sensör havalandırma |
+| Boot Splash | Düşük | Açılış animasyonu |
+| QR Kod | Düşük | Uber/Taksi yönlendirme |
+| Çoklu Dil | Düşük | İngilizce/Türkçe |
 
 ---
 
@@ -42,31 +54,90 @@
 ```
 VibeGo/
 │
-├── 📄 platformio.ini         [Derleme konfigürasyonu]
+├── 📄 platformio.ini         [Derleme konfigürasyonu - huge_app partition]
+├── 📄 partitions_huge_app.csv [3MB uygulama alanı]
 │
 ├── 📁 src/
-│   ├── 📄 main.cpp           [Ana program + simülasyon]
+│   ├── 📄 main.cpp           [Ana program + simülasyon + serial komutlar]
 │   ├── 📄 LGFX_Setup.h       [ST7789 + CST820 sürücü]
 │   ├── 📄 lv_conf.h          [LVGL ayarları]
+│   │
+│   ├── 📄 wifi_handler.h     [WiFiManager entegrasyonu]
+│   ├── 📄 brightness.h       [LDR otomatik parlaklık]
+│   ├── 📄 ntp_time.h         [NTP zaman senkronizasyonu]
+│   ├── 📄 data_logger.h      [SPIFFS veri loglama]
+│   ├── 📄 web_server.h       [Web yönetim paneli]
+│   ├── 📄 webhook_logger.h   [Make.com cloud sync]
+│   ├── 📄 http_ota.h         [GitHub OTA güncelleme]
 │   │
 │   └── 📁 ui/
 │       ├── 📄 ui.h           [Ekran tanımları]
 │       └── 📄 ui.c           [UI implementasyonu]
 │
+├── 📁 data/                   [SPIFFS dosyaları - web assets]
+│
 ├── 📁 SquareLineProject/     [SquareLine Studio dosyaları]
 │
 ├── 📄 README.MD              [Proje açıklaması]
+├── 📄 CHANGELOG.md           [Sürüm geçmişi]
 ├── 📄 project_map.md         [Bu dosya]
 └── 📄 esp_32_s_3_touch_lcd.md [Donanım referansı]
 ```
 
 ---
 
-## 3. UI Akış Diyagramı
+## 3. Sistem Mimarisi
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                         VibeGo v1.1.0                               │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                     │
+│  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐          │
+│  │   DISPLAY    │    │    TOUCH     │    │     LDR      │          │
+│  │   ST7789     │    │   CST820     │    │   GPIO34     │          │
+│  │   320x240    │    │     I2C      │    │  Parlaklık   │          │
+│  └──────┬───────┘    └──────┬───────┘    └──────┬───────┘          │
+│         │                   │                   │                   │
+│         └───────────────────┴───────────────────┘                   │
+│                             │                                       │
+│                    ┌────────▼────────┐                              │
+│                    │     LVGL 8.3    │                              │
+│                    │   Dark Theme    │                              │
+│                    └────────┬────────┘                              │
+│                             │                                       │
+│         ┌───────────────────┼───────────────────┐                   │
+│         │                   │                   │                   │
+│  ┌──────▼──────┐    ┌───────▼───────┐   ┌──────▼──────┐            │
+│  │  UI Screens │    │  Web Server   │   │   WiFi      │            │
+│  │  4 Ekran    │    │  Dashboard    │   │  Manager    │            │
+│  └─────────────┘    └───────┬───────┘   └──────┬──────┘            │
+│                             │                   │                   │
+│         ┌───────────────────┼───────────────────┘                   │
+│         │                   │                                       │
+│  ┌──────▼──────┐    ┌───────▼───────┐                              │
+│  │   SPIFFS    │    │   Webhook     │                              │
+│  │ Data Logger │    │  Make.com     │                              │
+│  │  100 kayıt  │    │ Google Sheets │                              │
+│  └─────────────┘    └───────────────┘                              │
+│                                                                     │
+│  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐          │
+│  │   HTTP OTA   │    │   Watchdog   │    │     NTP      │          │
+│  │   GitHub     │    │    30sn      │    │    UTC+3     │          │
+│  └──────────────┘    └──────────────┘    └──────────────┘          │
+│                                                                     │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 4. UI Akış Diyagramı
 
 ```
                     ┌──────────────────┐
                     │   Sistem Açılış  │
+                    │  WiFi Bağlantısı │
+                    │  NTP Sync        │
                     └────────┬─────────┘
                              │
                              ▼
@@ -116,6 +187,9 @@ VibeGo/
 │  [YENİ TEST]       │          │  [YENİ TEST]       │
 └────────┬───────────┘          └────────┬───────────┘
          │                               │
+         │   📊 SPIFFS'e kaydet          │
+         │   ☁️ Cloud'a gönder           │
+         │                               │
          └───────────────┬───────────────┘
                          │ (Tıklama)
                          ▼
@@ -124,7 +198,57 @@ VibeGo/
 
 ---
 
-## 4. Renk Paleti
+## 5. Web Panel Yapısı
+
+```
+http://[DEVICE_IP]/
+│
+├── 📊 Dashboard (Ana Sayfa)
+│   ├── Günlük İstatistikler
+│   │   ├── Toplam Test
+│   │   ├── Güvenli Sayısı
+│   │   └── Tehlikeli Sayısı
+│   │
+│   ├── Son Testler (20 kayıt)
+│   │   ├── ID, Tarih, BAC, Sonuç
+│   │   └── Tablo görünümü
+│   │
+│   └── Cihaz Bilgisi
+│       ├── IP Adresi
+│       ├── Firmware Sürümü
+│       ├── Uptime
+│       ├── WiFi Sinyal Gücü
+│       └── LDR Değeri
+│
+├── ⚙️ Ayarlar
+│   ├── Parlaklık Kontrolü (Slider)
+│   ├── Otomatik Parlaklık (Toggle)
+│   ├── Cloud Sync Süresi (Dropdown)
+│   │   ├── Hemen
+│   │   ├── 1 dakika
+│   │   ├── 10 dakika
+│   │   ├── 30 dakika
+│   │   ├── 1 saat
+│   │   └── 1 gün (varsayılan)
+│   │
+│   └── Aksiyonlar
+│       ├── [Güncelleme Kontrol]
+│       ├── [Logları Sil]
+│       ├── [Şimdi Sync]
+│       └── [Yeniden Başlat]
+│
+└── 📡 API Endpoints
+    ├── GET  /api/stats     → İstatistikler
+    ├── GET  /api/tests     → Test listesi
+    ├── GET  /api/device    → Cihaz bilgisi
+    ├── POST /api/settings  → Ayar güncelle
+    ├── POST /api/sync      → Manuel sync
+    └── POST /api/reboot    → Yeniden başlat
+```
+
+---
+
+## 6. Renk Paleti
 
 | Değişken | Hex | RGB | Kullanım |
 |----------|-----|-----|----------|
@@ -141,7 +265,21 @@ VibeGo/
 
 ---
 
-## 5. Simülasyon Parametreleri
+## 7. Serial Komutları
+
+| Komut | Açıklama |
+|-------|----------|
+| `status` | Sistem durumunu göster |
+| `dashboard` | Web panel URL'sini göster |
+| `wifi_portal` | WiFi ayar portalını başlat |
+| `wifi_reset` | WiFi ayarlarını sıfırla |
+| `check_update` | OTA güncelleme kontrolü |
+| `reboot` | Cihazı yeniden başlat |
+| `help` | Komut listesi |
+
+---
+
+## 8. Simülasyon Parametreleri
 
 ```cpp
 // main.cpp içinde
@@ -156,7 +294,26 @@ VibeGo/
 
 ---
 
-## 6. Derleme Komutları
+## 9. Bellek Yapılandırması
+
+```
+Partition Table: huge_app.csv
+┌──────────────┬────────┬──────────┐
+│ Partition    │ Type   │ Size     │
+├──────────────┼────────┼──────────┤
+│ nvs          │ data   │ 20KB     │
+│ otadata      │ data   │ 8KB      │
+│ app0         │ app    │ 3MB      │
+│ spiffs       │ data   │ 896KB    │
+└──────────────┴────────┴──────────┘
+
+LVGL: Çift tamponlama (45KB x 2)
+Stack: 16KB
+```
+
+---
+
+## 10. Derleme Komutları
 
 ```bash
 # Temiz derleme
@@ -164,6 +321,9 @@ pio run --target clean && pio run
 
 # Yükleme
 pio run -t upload --upload-port COM14
+
+# SPIFFS yükleme
+pio run -t uploadfs --upload-port COM14
 
 # Seri monitör
 pio device monitor --port COM14 --baud 115200
@@ -174,24 +334,36 @@ pio run -t size
 
 ---
 
-## 7. Sonraki Adımlar
+## 11. Sonraki Adımlar
 
 ### Kısa Vadeli (Bu Hafta)
-1. [ ] Touch kalibrasyonu kontrol
-2. [ ] Ekran parlaklık ayarı
-3. [ ] Animasyon iyileştirmeleri
 
-### Orta Vadeli (Bu Ay)
 1. [ ] ZE30 sensör entegrasyonu
 2. [ ] SHT30 nem sensörü
 3. [ ] Fan PWM kontrolü
 
+### Orta Vadeli (Bu Ay)
+
+1. [ ] Boot splash animasyonu
+2. [ ] Sensör kalibrasyon ekranı
+3. [ ] Gelişmiş istatistikler
+
 ### Uzun Vadeli
-1. [ ] WiFi bağlantısı
-2. [ ] OTA güncelleme
-3. [ ] QR kod gösterimi
-4. [ ] Çoklu dil desteği
+
+1. [ ] QR kod gösterimi
+2. [ ] Çoklu dil desteği
+3. [ ] Bluetooth entegrasyonu
+4. [ ] Mobil uygulama
 
 ---
 
-*Proje Haritası v1.0*
+## 12. Sürüm Geçmişi
+
+| Sürüm | Tarih | Öne Çıkanlar |
+|-------|-------|--------------|
+| v1.1.0 | 09.12.2024 | Web Panel, Cloud Sync, HTTP OTA, NTP, Watchdog |
+| v1.0.0 | 08.12.2024 | İlk sürüm - LVGL UI, WiFi, LDR |
+
+---
+
+*Proje Haritası v1.1.0*

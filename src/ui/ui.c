@@ -40,6 +40,9 @@ lv_obj_t * ui_Result_Value;
 lv_obj_t * ui_Result_Unit;
 lv_obj_t * ui_Result_Message;
 lv_obj_t * ui_Result_NewTest_Btn;
+lv_obj_t * ui_Result_QR;
+lv_obj_t * ui_Result_QR_Label;
+lv_obj_t * ui_Result_QR_Title;
 
 // ============================================================
 // Event Handlers
@@ -190,10 +193,11 @@ void ui_Home_screen_init(void) {
 
     ui_Home_Instructions = lv_label_create(right_panel);
     lv_label_set_text(ui_Home_Instructions, 
-        "1. Pipet al\n"
-        "2. Nefes al\n"
-        "3. Ufle\n"
-        "4. Bekle");
+        "1. Pipet alin\n"
+        "2. Yerlestirin\n"
+        "3. Nefes alin\n"
+        "4. 5sn ufleyin\n"
+        "5. Bekleyin");
     lv_obj_set_style_text_color(ui_Home_Instructions, lv_color_hex(UI_COLOR_TEXT_BODY), 0);
     lv_obj_set_style_text_font(ui_Home_Instructions, &lv_font_montserrat_12, 0);
     lv_obj_align(ui_Home_Instructions, LV_ALIGN_CENTER, 0, 10);
@@ -207,48 +211,59 @@ void ui_Measuring_screen_init(void) {
     lv_obj_clear_flag(ui_Measuring, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_style_bg_color(ui_Measuring, lv_color_hex(UI_COLOR_BG_DARK), 0);
 
+    // Spinner on LEFT side
     ui_Measuring_Spinner = lv_spinner_create(ui_Measuring, 1000, 60);
     lv_obj_set_size(ui_Measuring_Spinner, 100, 100);
-    lv_obj_align(ui_Measuring_Spinner, LV_ALIGN_LEFT_MID, 40, -10);
+    lv_obj_set_pos(ui_Measuring_Spinner, 30, 60);  // x=30, y=60
     lv_obj_set_style_arc_color(ui_Measuring_Spinner, lv_color_hex(UI_COLOR_CYAN), LV_PART_INDICATOR);
     lv_obj_set_style_arc_color(ui_Measuring_Spinner, lv_color_hex(UI_COLOR_PANEL), LV_PART_MAIN);
-    lv_obj_set_style_arc_width(ui_Measuring_Spinner, 8, LV_PART_INDICATOR);
-    lv_obj_set_style_arc_width(ui_Measuring_Spinner, 8, LV_PART_MAIN);
+    lv_obj_set_style_arc_width(ui_Measuring_Spinner, 10, LV_PART_INDICATOR);
+    lv_obj_set_style_arc_width(ui_Measuring_Spinner, 10, LV_PART_MAIN);
 
+    // Main text on RIGHT side - "OLCULUYOR..."
     ui_Measuring_Text = lv_label_create(ui_Measuring);
-    lv_label_set_text(ui_Measuring_Text, "Olcum Yapiliyor...");
+    lv_label_set_text(ui_Measuring_Text, "OLCULUYOR...");
     lv_obj_set_style_text_font(ui_Measuring_Text, &lv_font_montserrat_20, 0);
     lv_obj_set_style_text_color(ui_Measuring_Text, lv_color_hex(UI_COLOR_TEXT_PRIMARY), 0);
-    lv_obj_align(ui_Measuring_Text, LV_ALIGN_RIGHT_MID, -30, -30);
+    lv_obj_set_style_text_letter_space(ui_Measuring_Text, 1, 0);
+    lv_obj_set_pos(ui_Measuring_Text, 150, 80);  // x=150, y=80
 
+    // Hint text below main text
     lv_obj_t * hint = lv_label_create(ui_Measuring);
-    lv_label_set_text(hint, "Lutfen ufleyin...");
+    lv_label_set_text(hint, "Uflemeye Devam Edin");
     lv_obj_set_style_text_color(hint, lv_color_hex(UI_COLOR_CYAN), 0);
     lv_obj_set_style_text_font(hint, &lv_font_montserrat_14, 0);
-    lv_obj_align(hint, LV_ALIGN_RIGHT_MID, -50, 10);
+    lv_obj_set_pos(hint, 150, 115);  // x=150, y=115
 
+    // Progress bar at BOTTOM
     ui_Measuring_Progress = lv_bar_create(ui_Measuring);
-    lv_obj_set_size(ui_Measuring_Progress, 280, 15);
-    lv_obj_align(ui_Measuring_Progress, LV_ALIGN_BOTTOM_MID, 0, -30);
+    lv_obj_set_size(ui_Measuring_Progress, 280, 18);
+    lv_obj_align(ui_Measuring_Progress, LV_ALIGN_BOTTOM_MID, 0, -20);
     lv_bar_set_range(ui_Measuring_Progress, 0, 100);
     lv_bar_set_value(ui_Measuring_Progress, 0, LV_ANIM_OFF);
     lv_obj_set_style_bg_color(ui_Measuring_Progress, lv_color_hex(UI_COLOR_PANEL), LV_PART_MAIN);
     lv_obj_set_style_bg_color(ui_Measuring_Progress, lv_color_hex(UI_COLOR_CYAN), LV_PART_INDICATOR);
-    lv_obj_set_style_radius(ui_Measuring_Progress, 7, LV_PART_MAIN);
-    lv_obj_set_style_radius(ui_Measuring_Progress, 7, LV_PART_INDICATOR);
+    lv_obj_set_style_radius(ui_Measuring_Progress, 9, LV_PART_MAIN);
+    lv_obj_set_style_radius(ui_Measuring_Progress, 9, LV_PART_INDICATOR);
+    lv_obj_set_style_anim_time(ui_Measuring_Progress, 300, LV_PART_MAIN);
 }
 
 // ============================================================
 // SCREEN: Result
 // ============================================================
+
+// Default QR URL - can be changed from web panel
+#define DEFAULT_QR_URL "https://vibego.app/go"
+
 void ui_Result_screen_init(void) {
     ui_Result = lv_obj_create(NULL);
     lv_obj_clear_flag(ui_Result, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_style_bg_color(ui_Result, lv_color_hex(UI_COLOR_BG_DARK), 0);
 
+    // LEFT PANEL - BAC Value
     lv_obj_t * left_panel = lv_obj_create(ui_Result);
-    lv_obj_set_size(left_panel, 180, 200);
-    lv_obj_align(left_panel, LV_ALIGN_LEFT_MID, 15, 0);
+    lv_obj_set_size(left_panel, 150, 200);
+    lv_obj_align(left_panel, LV_ALIGN_LEFT_MID, 10, 0);
     lv_obj_set_style_bg_color(left_panel, lv_color_hex(UI_COLOR_PANEL), 0);
     lv_obj_set_style_bg_opa(left_panel, 220, 0);
     lv_obj_set_style_radius(left_panel, 16, 0);
@@ -257,9 +272,9 @@ void ui_Result_screen_init(void) {
 
     ui_Result_Status_Label = lv_label_create(left_panel);
     lv_label_set_text(ui_Result_Status_Label, LV_SYMBOL_OK " GUVENLI");
-    lv_obj_set_style_text_font(ui_Result_Status_Label, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_font(ui_Result_Status_Label, &lv_font_montserrat_14, 0);
     lv_obj_set_style_text_color(ui_Result_Status_Label, lv_color_hex(UI_COLOR_GREEN), 0);
-    lv_obj_align(ui_Result_Status_Label, LV_ALIGN_TOP_MID, 0, 15);
+    lv_obj_align(ui_Result_Status_Label, LV_ALIGN_TOP_MID, 0, 12);
 
     ui_Result_Value = lv_label_create(left_panel);
     lv_label_set_text(ui_Result_Value, "0.00");
@@ -273,36 +288,64 @@ void ui_Result_screen_init(void) {
     lv_obj_set_style_text_color(ui_Result_Unit, lv_color_hex(UI_COLOR_TEXT_MUTED), 0);
     lv_obj_align(ui_Result_Unit, LV_ALIGN_CENTER, 0, 35);
 
+    ui_Result_Message = lv_label_create(left_panel);
+    lv_label_set_long_mode(ui_Result_Message, LV_LABEL_LONG_WRAP);
+    lv_obj_set_width(ui_Result_Message, 130);
+    lv_label_set_text(ui_Result_Message, "Iyi yolculuklar!");
+    lv_obj_set_style_text_align(ui_Result_Message, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_text_font(ui_Result_Message, &lv_font_montserrat_10, 0);
+    lv_obj_set_style_text_color(ui_Result_Message, lv_color_hex(UI_COLOR_TEXT_MUTED), 0);
+    lv_obj_align(ui_Result_Message, LV_ALIGN_BOTTOM_MID, 0, -8);
+
+    // RIGHT PANEL - QR Code + Button
     lv_obj_t * right_panel = lv_obj_create(ui_Result);
-    lv_obj_set_size(right_panel, 105, 200);
-    lv_obj_align(right_panel, LV_ALIGN_RIGHT_MID, -15, 0);
+    lv_obj_set_size(right_panel, 140, 200);
+    lv_obj_align(right_panel, LV_ALIGN_RIGHT_MID, -10, 0);
     lv_obj_set_style_bg_color(right_panel, lv_color_hex(UI_COLOR_PANEL), 0);
     lv_obj_set_style_bg_opa(right_panel, 180, 0);
     lv_obj_set_style_radius(right_panel, 16, 0);
     lv_obj_set_style_border_width(right_panel, 0, 0);
-    lv_obj_set_style_pad_all(right_panel, 10, 0);
+    lv_obj_set_style_pad_all(right_panel, 8, 0);
     lv_obj_clear_flag(right_panel, LV_OBJ_FLAG_SCROLLABLE);
 
-    ui_Result_Message = lv_label_create(right_panel);
-    lv_label_set_long_mode(ui_Result_Message, LV_LABEL_LONG_WRAP);
-    lv_obj_set_width(ui_Result_Message, 85);
-    lv_label_set_text(ui_Result_Message, "Iyi yolculuklar!");
-    lv_obj_set_style_text_align(ui_Result_Message, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_set_style_text_font(ui_Result_Message, &lv_font_montserrat_12, 0);
-    lv_obj_set_style_text_color(ui_Result_Message, lv_color_hex(UI_COLOR_TEXT_BODY), 0);
-    lv_obj_align(ui_Result_Message, LV_ALIGN_TOP_MID, 0, 10);
+    // QR Code Title (dynamic, can be changed from web panel)
+    ui_Result_QR_Title = lv_label_create(right_panel);
+    lv_label_set_long_mode(ui_Result_QR_Title, LV_LABEL_LONG_WRAP);
+    lv_obj_set_width(ui_Result_QR_Title, 120);  // Max width before wrap
+    lv_label_set_text(ui_Result_QR_Title, "TAKSI CAG");
+    lv_obj_set_style_text_font(ui_Result_QR_Title, &lv_font_montserrat_10, 0);
+    lv_obj_set_style_text_color(ui_Result_QR_Title, lv_color_hex(UI_COLOR_CYAN), 0);
+    lv_obj_set_style_text_align(ui_Result_QR_Title, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_align(ui_Result_QR_Title, LV_ALIGN_TOP_MID, 0, 0);
 
+    // QR Code
+    #if LV_USE_QRCODE
+    ui_Result_QR = lv_qrcode_create(right_panel, 80, 
+        lv_color_hex(0x000000), lv_color_hex(0xFFFFFF));
+    lv_qrcode_update(ui_Result_QR, DEFAULT_QR_URL, strlen(DEFAULT_QR_URL));
+    lv_obj_align(ui_Result_QR, LV_ALIGN_CENTER, 0, -5);
+    lv_obj_set_style_border_color(ui_Result_QR, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_border_width(ui_Result_QR, 3, 0);
+    #endif
+
+    // QR Hint
+    ui_Result_QR_Label = lv_label_create(right_panel);
+    lv_label_set_text(ui_Result_QR_Label, "Tara & Git");
+    lv_obj_set_style_text_font(ui_Result_QR_Label, &lv_font_montserrat_10, 0);
+    lv_obj_set_style_text_color(ui_Result_QR_Label, lv_color_hex(UI_COLOR_TEXT_MUTED), 0);
+    lv_obj_align(ui_Result_QR_Label, LV_ALIGN_CENTER, 0, 48);
+
+    // New Test Button
     ui_Result_NewTest_Btn = lv_btn_create(right_panel);
-    lv_obj_set_size(ui_Result_NewTest_Btn, 85, 50);
+    lv_obj_set_size(ui_Result_NewTest_Btn, 110, 30);
     lv_obj_align(ui_Result_NewTest_Btn, LV_ALIGN_BOTTOM_MID, 0, 0);
     lv_obj_set_style_bg_color(ui_Result_NewTest_Btn, lv_color_hex(UI_COLOR_PRIMARY), 0);
-    lv_obj_set_style_radius(ui_Result_NewTest_Btn, 12, 0);
+    lv_obj_set_style_radius(ui_Result_NewTest_Btn, 15, 0);
     lv_obj_add_event_cb(ui_Result_NewTest_Btn, ui_event_new_test_btn, LV_EVENT_CLICKED, NULL);
 
     lv_obj_t * btn_label = lv_label_create(ui_Result_NewTest_Btn);
-    lv_label_set_text(btn_label, "YENI\nTEST");
-    lv_obj_set_style_text_align(btn_label, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_set_style_text_font(btn_label, &lv_font_montserrat_12, 0);
+    lv_label_set_text(btn_label, LV_SYMBOL_REFRESH " YENI TEST");
+    lv_obj_set_style_text_font(btn_label, &lv_font_montserrat_10, 0);
     lv_obj_set_style_text_color(btn_label, lv_color_hex(UI_COLOR_TEXT_PRIMARY), 0);
     lv_obj_center(btn_label);
 }
@@ -310,6 +353,29 @@ void ui_Result_screen_init(void) {
 // ============================================================
 // Result Screen Helpers
 // ============================================================
+
+/**
+ * Update QR code with new URL
+ * Call this when sponsor URL changes from web panel
+ */
+void ui_update_qr_code(const char* url) {
+    #if LV_USE_QRCODE
+    if (ui_Result_QR != NULL && url != NULL) {
+        lv_qrcode_update(ui_Result_QR, url, strlen(url));
+    }
+    #endif
+}
+
+/**
+ * Update QR title text
+ * Call this when sponsor title changes from web panel
+ */
+void ui_update_qr_title(const char* title) {
+    if (ui_Result_QR_Title != NULL && title != NULL) {
+        lv_label_set_text(ui_Result_QR_Title, title);
+    }
+}
+
 void ui_show_result_safe(float bac_value) {
     lv_label_set_text(ui_Result_Status_Label, LV_SYMBOL_OK " GUVENLI");
     lv_obj_set_style_text_color(ui_Result_Status_Label, lv_color_hex(UI_COLOR_GREEN), 0);

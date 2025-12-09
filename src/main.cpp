@@ -5,8 +5,9 @@
  * Display: 320x240 Landscape Mode
  * 
  * Features:
- * - WiFi with Captive Portal (WiFiManager)
- * - OTA Updates (ArduinoOTA)
+ * - WiFi AP+STA Mode (Always accessible via AP)
+ * - Web Dashboard for all settings
+ * - HTTP OTA Updates
  * - Auto Brightness (LDR on GPIO34)
  * - Sensor Simulation Mode
  * ============================================================
@@ -24,11 +25,12 @@
 #include "data_logger.h"
 #include "web_server.h"
 #include "webhook_logger.h"
+#include "sponsor_manager.h"
 
 // ============================================================
 // Firmware Version
 // ============================================================
-#define FIRMWARE_VERSION "1.0.0"
+#define FIRMWARE_VERSION "1.3.0"
 
 // ============================================================
 // Display Configuration (Landscape)
@@ -170,9 +172,14 @@ void handle_serial_commands() {
             Serial.println("[CMD] Resetting WiFi...");
             wifi_reset();
         }
-        else if (cmd == "wifi_portal") {
-            Serial.println("[CMD] Starting WiFi Portal...");
-            wifi_start_portal();
+        else if (cmd == "wifi_scan") {
+            Serial.println("[CMD] Scanning networks...");
+            int count = wifi_scan_networks();
+            Serial.printf("[CMD] Found %d networks\n", count);
+        }
+        else if (cmd == "wifi_ap") {
+            Serial.println("[CMD] Restarting AP...");
+            wifi_restart_ap();
         }
         else if (cmd == "reboot") {
             Serial.println("[CMD] Rebooting...");
@@ -181,10 +188,22 @@ void handle_serial_commands() {
         else if (cmd == "status") {
             Serial.println("=== STATUS ===");
             Serial.printf("Firmware: v%s\n", http_ota_get_version());
-            Serial.printf("WiFi: %s\n", wifi_get_status_str());
-            Serial.printf("IP: %s\n", wifi_get_ip().c_str());
-            Serial.printf("SSID: %s\n", wifi_get_ssid().c_str());
-            Serial.printf("Signal: %d%%\n", wifi_get_signal_percent());
+            Serial.printf("AP Active: %s\n", wifi_is_ap_active() ? "Yes" : "No");
+            if (wifi_is_ap_active()) {
+                Serial.printf("AP IP: %s\n", wifi_get_ap_ip().c_str());
+                int remaining = wifi_get_ap_remaining_seconds();
+                if (remaining > 0) {
+                    Serial.printf("AP Remaining: %d min %d sec\n", remaining / 60, remaining % 60);
+                } else {
+                    Serial.printf("AP Remaining: Unlimited (waiting for connection)\n");
+                }
+            }
+            Serial.printf("STA Status: %s\n", wifi_get_status_str());
+            if (wifi_is_connected()) {
+                Serial.printf("STA SSID: %s\n", wifi_get_ssid().c_str());
+                Serial.printf("STA IP: %s\n", wifi_get_sta_ip().c_str());
+                Serial.printf("Signal: %d%%\n", wifi_get_signal_percent());
+            }
             Serial.printf("Brightness: %d (Auto: %s)\n", brightness_get_level(), brightness_is_auto() ? "Yes" : "No");
             Serial.printf("LDR Raw: %d\n", brightness_get_ldr_raw());
         }
@@ -200,16 +219,16 @@ void handle_serial_commands() {
             Serial.println("status      - Show system status");
             Serial.println("update/ota  - Check and install updates");
             Serial.println("version     - Show firmware version");
-            Serial.println("wifi_portal - Start WiFi config portal");
+            Serial.println("wifi_scan   - Scan WiFi networks");
+            Serial.println("wifi_ap     - Restart AP mode (30 min)");
             Serial.println("wifi_reset  - Reset WiFi credentials");
             Serial.println("reboot      - Restart device");
             Serial.println("dashboard   - Show web panel URL");
         }
         else if (cmd == "dashboard") {
-            if (wifi_get_status() == WIFI_STATUS_CONNECTED) {
-                Serial.printf("Dashboard: http://%s/\n", wifi_get_ip().c_str());
-            } else {
-                Serial.println("WiFi not connected");
+            Serial.printf("AP Dashboard: http://%s/\n", wifi_get_ap_ip().c_str());
+            if (wifi_is_connected()) {
+                Serial.printf("STA Dashboard: http://%s/\n", wifi_get_sta_ip().c_str());
             }
         }
     }
@@ -225,8 +244,9 @@ void setup() {
     Serial.println();
     Serial.println("╔════════════════════════════════════════╗");
     Serial.println("║      VIBEGO - AlkoMetric Kiosk         ║");
-    Serial.printf("║      Firmware: v%s                   ║\n", FIRMWARE_VERSION);
+    Serial.printf("║      Firmware: v%s                  ║\n", FIRMWARE_VERSION);
     Serial.println("║      Platform: JC2432W328              ║");
+    Serial.println("║      Mode: AP + STA                    ║");
     Serial.println("╚════════════════════════════════════════╝");
     Serial.println();
 
@@ -278,14 +298,12 @@ void setup() {
     extern lv_obj_t * ui_Measuring;
     lv_obj_add_event_cb(ui_Measuring, screen_load_event_cb, LV_EVENT_SCREEN_LOADED, NULL);
 
-    // Initialize WiFi - Start AP if no saved credentials
-    Serial.println("[INIT] WiFi...");
-    if (!wifi_init(false)) {
-        Serial.println("[WIFI] No saved network, use 'wifi_portal' command");
-    }
+    // Initialize WiFi (AP+STA mode)
+    Serial.println("[INIT] WiFi AP+STA...");
+    wifi_init(true);
     
-    // Initialize NTP (after WiFi)
-    if (wifi_get_status() == WIFI_STATUS_CONNECTED) {
+    // Initialize NTP (if connected to external network)
+    if (wifi_is_connected()) {
         ntp_init();
     }
     
@@ -297,9 +315,19 @@ void setup() {
         Serial.println(" FAILED");
     }
     
-    // Initialize Web Server (after WiFi)
-    if (wifi_get_status() == WIFI_STATUS_CONNECTED) {
-        web_server_init();
+    // Initialize Web Server (always start - works on AP)
+    web_server_init();
+    
+    // Load saved sponsor QR URL
+    sponsor_init();
+    String savedQrUrl = sponsor_get_qr_url();
+    String savedQrTitle = sponsor_get_qr_title();
+    ui_update_qr_code(savedQrUrl.c_str());
+    ui_update_qr_title(savedQrTitle.c_str());
+    Serial.printf("[INIT] Sponsor: %s (%s)\n", savedQrTitle.c_str(), savedQrUrl.c_str());
+    
+    // Initialize Webhook (if connected)
+    if (wifi_is_connected()) {
         webhook_init();
     }
     
@@ -315,8 +343,9 @@ void setup() {
     Serial.println();
     Serial.println("[READY] System started!");
     Serial.println("[INFO] Type 'help' for commands");
-    if (wifi_get_status() == WIFI_STATUS_CONNECTED) {
-        Serial.printf("[WEB] Dashboard: http://%s/\n", wifi_get_ip().c_str());
+    Serial.printf("[WEB] AP Dashboard: http://%s/\n", wifi_get_ap_ip().c_str());
+    if (wifi_is_connected()) {
+        Serial.printf("[WEB] STA Dashboard: http://%s/\n", wifi_get_sta_ip().c_str());
     }
     Serial.println();
 }
@@ -334,23 +363,30 @@ void loop() {
     // WiFi status update
     wifi_update();
     
-    // Delayed init: Start services when WiFi connects
-    static bool services_started = false;
-    if (!services_started && wifi_get_status() == WIFI_STATUS_CONNECTED) {
+    // Delayed init: Start services when WiFi connects to external network
+    static bool sta_services_started = false;
+    if (!sta_services_started && wifi_is_connected()) {
         ntp_init();
-        web_server_init();
         webhook_init();
-        services_started = true;
+        sta_services_started = true;
+        Serial.println("[INIT] STA services started (NTP, Webhook)");
     }
     
-    // HTTP OTA (GitHub - check every hour)
-    http_ota_check_periodic();
+    // NTP sync update (non-blocking)
+    ntp_update();
+    
+    // HTTP OTA (GitHub - check every hour, only if connected to internet)
+    if (wifi_is_connected()) {
+        http_ota_check_periodic();
+    }
     
     // Brightness (auto LDR)
     brightness_update();
     
-    // Webhook queue sync check
-    webhook_update();
+    // Webhook queue sync check (only if connected)
+    if (wifi_is_connected()) {
+        webhook_update();
+    }
     
     // Sensor simulation
     if (SENSOR_SIMULATION_ENABLED) {

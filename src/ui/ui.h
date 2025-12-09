@@ -65,6 +65,9 @@ extern lv_obj_t * ui_Result_Value;
 extern lv_obj_t * ui_Result_Unit;
 extern lv_obj_t * ui_Result_Message;
 extern lv_obj_t * ui_Result_NewTest_Btn;
+extern lv_obj_t * ui_Result_QR;
+extern lv_obj_t * ui_Result_QR_Label;
+extern lv_obj_t * ui_Result_QR_Title;
 
 // ============================================================
 // Function Prototypes
@@ -79,6 +82,12 @@ void ui_init(void);
 // Result screen helpers
 void ui_show_result_safe(float bac_value);
 void ui_show_result_danger(float bac_value);
+
+// QR Code update (call when sponsor URL changes)
+void ui_update_qr_code(const char* url);
+
+// QR Title update (call when sponsor title changes)
+void ui_update_qr_title(const char* title);
 
 // Get measuring screen for simulation
 lv_obj_t * ui_get_measuring_screen(void);

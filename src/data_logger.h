@@ -1,8 +1,9 @@
 /**
  * ============================================================
- * VibeGo - Data Logger
+ * VibeGo - Data Logger v2.0
  * ============================================================
  * Logs test results to SPIFFS for reporting
+ * Supports date range filtering and CSV export
  * ============================================================
  */
 
@@ -19,7 +20,7 @@
 // Configuration
 // ============================================================
 #define LOG_FILE        "/test_logs.json"
-#define MAX_LOG_ENTRIES 100
+#define MAX_LOG_ENTRIES 500  // Increased for historical data
 #define STATS_FILE      "/daily_stats.json"
 
 // ============================================================
@@ -41,6 +42,15 @@ struct DailyStats {
     float max_bac;
 };
 
+// Filter period enum
+typedef enum {
+    FILTER_TODAY = 0,
+    FILTER_WEEK = 1,
+    FILTER_MONTH = 2,
+    FILTER_SIX_MONTHS = 3,
+    FILTER_ALL = 4
+} filter_period_t;
+
 // ============================================================
 // State
 // ============================================================
@@ -49,7 +59,58 @@ static uint32_t next_log_id = 1;
 static DailyStats today_stats = {"", 0, 0, 0, 0.0f, 0.0f};
 
 // ============================================================
-// Functions
+// Helper Functions
+// ============================================================
+
+/**
+ * Parse date string (YYYY-MM-DD) to components
+ */
+bool parse_date(const String& dateStr, int& year, int& month, int& day) {
+    if (dateStr.length() < 10) return false;
+    year = dateStr.substring(0, 4).toInt();
+    month = dateStr.substring(5, 7).toInt();
+    day = dateStr.substring(8, 10).toInt();
+    return year > 2000 && month >= 1 && month <= 12 && day >= 1 && day <= 31;
+}
+
+/**
+ * Calculate days difference between two dates
+ */
+int days_ago(const String& dateStr) {
+    int year, month, day;
+    if (!parse_date(dateStr, year, month, day)) return 9999;
+    
+    int tyear, tmonth, tday;
+    String today = ntp_get_date();
+    if (!parse_date(today, tyear, tmonth, tday)) return 0;
+    
+    // Simple approximation (not perfect but good enough for filtering)
+    int todayDays = tyear * 365 + tmonth * 30 + tday;
+    int dateDays = year * 365 + month * 30 + day;
+    
+    return todayDays - dateDays;
+}
+
+/**
+ * Check if date is within filter period
+ */
+bool is_within_period(const String& datetime, filter_period_t period) {
+    if (period == FILTER_ALL) return true;
+    
+    String dateStr = datetime.substring(0, 10);
+    int daysAgo = days_ago(dateStr);
+    
+    switch (period) {
+        case FILTER_TODAY:      return daysAgo == 0;
+        case FILTER_WEEK:       return daysAgo <= 7;
+        case FILTER_MONTH:      return daysAgo <= 30;
+        case FILTER_SIX_MONTHS: return daysAgo <= 180;
+        default:                return true;
+    }
+}
+
+// ============================================================
+// Main Functions
 // ============================================================
 
 /**
@@ -74,7 +135,7 @@ bool logger_init() {
     if (SPIFFS.exists(LOG_FILE)) {
         File file = SPIFFS.open(LOG_FILE, "r");
         if (file) {
-            StaticJsonDocument<8192> doc;
+            DynamicJsonDocument doc(16384);
             DeserializationError error = deserializeJson(doc, file);
             file.close();
             
@@ -114,7 +175,7 @@ bool logger_add_test(float bac, bool is_safe) {
         entry.id, bac, is_safe ? "Yes" : "No");
     
     // Load existing logs
-    StaticJsonDocument<8192> doc;
+    DynamicJsonDocument doc(16384);
     JsonArray logs;
     
     if (SPIFFS.exists(LOG_FILE)) {
@@ -181,29 +242,71 @@ bool logger_add_test(float bac, bool is_safe) {
 }
 
 /**
- * Get daily statistics as JSON
+ * Get statistics for a given period as JSON
  */
-String logger_get_stats_json() {
-    StaticJsonDocument<256> doc;
+String logger_get_stats_json_filtered(filter_period_t period = FILTER_TODAY) {
+    if (!SPIFFS.exists(LOG_FILE)) {
+        return "{\"date\":\"\",\"total_tests\":0,\"safe_count\":0,\"danger_count\":0,\"avg_bac\":\"0.00\",\"max_bac\":\"0.00\",\"safe_percent\":0}";
+    }
     
-    doc["date"] = today_stats.date;
-    doc["total_tests"] = today_stats.total_tests;
-    doc["safe_count"] = today_stats.safe_count;
-    doc["danger_count"] = today_stats.danger_count;
-    doc["avg_bac"] = String(today_stats.avg_bac, 2);
-    doc["max_bac"] = String(today_stats.max_bac, 2);
-    doc["safe_percent"] = today_stats.total_tests > 0 ? 
-        (today_stats.safe_count * 100 / today_stats.total_tests) : 0;
+    File file = SPIFFS.open(LOG_FILE, "r");
+    if (!file) {
+        return "{\"date\":\"\",\"total_tests\":0,\"safe_count\":0,\"danger_count\":0,\"avg_bac\":\"0.00\",\"max_bac\":\"0.00\",\"safe_percent\":0}";
+    }
+    
+    DynamicJsonDocument doc(16384);
+    DeserializationError error = deserializeJson(doc, file);
+    file.close();
+    
+    if (error) {
+        return "{\"date\":\"\",\"total_tests\":0,\"safe_count\":0,\"danger_count\":0,\"avg_bac\":\"0.00\",\"max_bac\":\"0.00\",\"safe_percent\":0}";
+    }
+    
+    JsonArray logs = doc["logs"].as<JsonArray>();
+    
+    // Calculate stats for period
+    int total = 0, safe = 0, danger = 0;
+    float sumBac = 0, maxBac = 0;
+    
+    for (JsonVariant v : logs) {
+        String datetime = v["datetime"].as<String>();
+        if (is_within_period(datetime, period)) {
+            total++;
+            float bac = v["bac"].as<float>();
+            bool isSafe = v["safe"].as<bool>();
+            
+            if (isSafe) safe++;
+            else danger++;
+            
+            sumBac += bac;
+            if (bac > maxBac) maxBac = bac;
+        }
+    }
+    
+    StaticJsonDocument<256> result;
+    result["total_tests"] = total;
+    result["safe_count"] = safe;
+    result["danger_count"] = danger;
+    result["avg_bac"] = total > 0 ? String(sumBac / total, 2) : "0.00";
+    result["max_bac"] = String(maxBac, 2);
+    result["safe_percent"] = total > 0 ? (safe * 100 / total) : 0;
     
     String output;
-    serializeJson(doc, output);
+    serializeJson(result, output);
     return output;
 }
 
 /**
- * Get test logs as JSON (last N entries)
+ * Get daily statistics as JSON (backward compatible)
  */
-String logger_get_logs_json(int limit = 20) {
+String logger_get_stats_json() {
+    return logger_get_stats_json_filtered(FILTER_TODAY);
+}
+
+/**
+ * Get test logs as JSON with period filter
+ */
+String logger_get_logs_json_filtered(filter_period_t period = FILTER_ALL, int limit = 100) {
     if (!SPIFFS.exists(LOG_FILE)) {
         return "{\"logs\":[]}";
     }
@@ -213,7 +316,7 @@ String logger_get_logs_json(int limit = 20) {
         return "{\"logs\":[]}";
     }
     
-    StaticJsonDocument<8192> doc;
+    DynamicJsonDocument doc(16384);
     DeserializationError error = deserializeJson(doc, file);
     file.close();
     
@@ -221,20 +324,70 @@ String logger_get_logs_json(int limit = 20) {
         return "{\"logs\":[]}";
     }
     
-    // Return last N entries
     JsonArray logs = doc["logs"].as<JsonArray>();
     
-    StaticJsonDocument<4096> result;
+    DynamicJsonDocument result(16384);
     JsonArray resultLogs = result.createNestedArray("logs");
     
-    int start = logs.size() > limit ? logs.size() - limit : 0;
-    for (int i = logs.size() - 1; i >= start; i--) {
-        resultLogs.add(logs[i]);
+    int count = 0;
+    // Iterate from newest to oldest
+    for (int i = logs.size() - 1; i >= 0 && count < limit; i--) {
+        String datetime = logs[i]["datetime"].as<String>();
+        if (is_within_period(datetime, period)) {
+            resultLogs.add(logs[i]);
+            count++;
+        }
     }
     
     String output;
     serializeJson(result, output);
     return output;
+}
+
+/**
+ * Get test logs as JSON (backward compatible)
+ */
+String logger_get_logs_json(int limit = 20) {
+    return logger_get_logs_json_filtered(FILTER_ALL, limit);
+}
+
+/**
+ * Export logs as CSV with period filter
+ */
+String logger_export_csv(filter_period_t period = FILTER_ALL) {
+    String csv = "ID,Tarih/Saat,BAC,Sonuc\n";
+    
+    if (!SPIFFS.exists(LOG_FILE)) {
+        return csv;
+    }
+    
+    File file = SPIFFS.open(LOG_FILE, "r");
+    if (!file) {
+        return csv;
+    }
+    
+    DynamicJsonDocument doc(16384);
+    DeserializationError error = deserializeJson(doc, file);
+    file.close();
+    
+    if (error) {
+        return csv;
+    }
+    
+    JsonArray logs = doc["logs"].as<JsonArray>();
+    
+    for (JsonVariant v : logs) {
+        String datetime = v["datetime"].as<String>();
+        if (is_within_period(datetime, period)) {
+            csv += String(v["id"].as<uint32_t>()) + ",";
+            csv += datetime + ",";
+            csv += String(v["bac"].as<float>(), 2) + ",";
+            csv += v["safe"].as<bool>() ? "Guvenli" : "Tehlikeli";
+            csv += "\n";
+        }
+    }
+    
+    return csv;
 }
 
 /**
