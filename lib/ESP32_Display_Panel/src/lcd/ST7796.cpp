@@ -223,16 +223,16 @@ static esp_err_t panel_st7796_draw_bitmap(esp_lcd_panel_t *panel, int x_start, i
     y_end += st7796->y_gap;
 
     uint8_t x_coord[] = {
-        (x_start >> 8) & 0xFF,
-        x_start & 0xFF,
-        ((x_end - 1) >> 8) & 0xFF,
-        (x_end - 1) & 0xFF,
+        (uint8_t)((x_start >> 8) & 0xFF),
+        (uint8_t)(x_start & 0xFF),
+        (uint8_t)(((x_end - 1) >> 8) & 0xFF),
+        (uint8_t)((x_end - 1) & 0xFF),
     };
     uint8_t y_coord[] = {
-        (y_start >> 8) & 0xFF,
-        y_start & 0xFF,
-        ((y_end - 1) >> 8) & 0xFF,
-        (y_end - 1) & 0xFF,
+        (uint8_t)((y_start >> 8) & 0xFF),
+        (uint8_t)(y_start & 0xFF),
+        (uint8_t)(((y_end - 1) >> 8) & 0xFF),
+        (uint8_t)((y_end - 1) & 0xFF),
     };
     // define an area of frame memory where MCU can access
     esp_lcd_panel_io_tx_param(io, LCD_CMD_CASET, x_coord, 4);

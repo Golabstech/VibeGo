@@ -122,6 +122,7 @@ void ESP_Panel::init(void)
         .vsync_gpio_num = ESP_PANEL_LCD_RGB_IO_VSYNC,
         .de_gpio_num = ESP_PANEL_LCD_RGB_IO_DE,
         .pclk_gpio_num = ESP_PANEL_LCD_RGB_IO_PCLK,
+        .disp_gpio_num = ESP_PANEL_LCD_RGB_IO_DISP,
         .data_gpio_nums = {
             ESP_PANEL_LCD_RGB_IO_DATA0,
             ESP_PANEL_LCD_RGB_IO_DATA1,
@@ -140,7 +141,7 @@ void ESP_Panel::init(void)
             ESP_PANEL_LCD_RGB_IO_DATA14,
             ESP_PANEL_LCD_RGB_IO_DATA15,
         },
-        .disp_gpio_num = ESP_PANEL_LCD_RGB_IO_DISP,
+        // .disp_gpio_num = ESP_PANEL_LCD_RGB_IO_DISP, // Moved up
         // .on_frame_trans_done = NULL, // Removed for compatibility with newer IDF
         .flags = {
             .fb_in_psram = 1,

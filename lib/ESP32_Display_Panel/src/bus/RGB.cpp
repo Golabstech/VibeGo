@@ -25,11 +25,13 @@ ESP_PanelBus_RGB::ESP_PanelBus_RGB(const esp_lcd_rgb_panel_config_t *rgb_config,
     this->spi_config = *spi_config;
     flags.host_need_init = true;
 
+    /* on_frame_trans_done and user_ctx are removed in IDF 5.x
     if (this->rgb_config.on_frame_trans_done == NULL) {
         ctx.bus = this;
         this->rgb_config.on_frame_trans_done = (esp_lcd_rgb_panel_frame_trans_done_cb_t)callback;
         this->rgb_config.user_ctx = (void *)&ctx;
     }
+    */
 }
 
 ESP_PanelBus_RGB::ESP_PanelBus_RGB(const esp_lcd_rgb_panel_config_t *rgb_config, int host_id)
@@ -39,11 +41,13 @@ ESP_PanelBus_RGB::ESP_PanelBus_RGB(const esp_lcd_rgb_panel_config_t *rgb_config,
     this->rgb_config = *rgb_config;
     flags.host_need_init = false;
 
+    /* on_frame_trans_done and user_ctx are removed in IDF 5.x
     if (this->rgb_config.on_frame_trans_done == NULL) {
         ctx.bus = this;
         this->rgb_config.on_frame_trans_done = (esp_lcd_rgb_panel_frame_trans_done_cb_t)callback;
         this->rgb_config.user_ctx = (void *)&ctx;
     }
+    */
 }
 
 ESP_PanelBus_RGB::ESP_PanelBus_RGB(uint16_t width, uint16_t height,  int hsync, int vsync, int pclk,
