@@ -2,10 +2,10 @@
 
 **Akıllı Alkolmetre Kiosk Sistemi**
 
-![Platform](https://img.shields.io/badge/Platform-ESP32-blue)
-![Display](https://img.shields.io/badge/Display-JC2432W328-green)
+![Platform](https://img.shields.io/badge/Platform-ESP32--S3-blue)
+![Display](https://img.shields.io/badge/Display-Waveshare%205inch-green)
 ![Framework](https://img.shields.io/badge/Framework-Arduino%20%2B%20LVGL-orange)
-![Version](https://img.shields.io/badge/Version-1.4.0-purple)
+![Version](https://img.shields.io/badge/Version-2.0.0-purple)
 ![License](https://img.shields.io/badge/License-MIT-yellow)
 
 ---
@@ -18,36 +18,49 @@ VibeGo, bar ve mekanlar için tasarlanmış, modern dokunmatik ekranlı bir alko
 
 ---
 
-## ✨ Güncel Özellikler (v1.4.0)
+## ✨ Güncel Özellikler (v2.0.0)
+
+### 🖥️ Yeni Platform: Waveshare ESP32-S3-Touch-LCD-5
+
+- 5 inç 1024x600 IPS LCD ekran
+- ESP32-S3 (16MB Flash, 8MB PSRAM)
+- GT911 kapasitif dokunmatik panel
+- RGB565 paralel arayüz
 
 ### 🎬 Boot Splash Ekranı
+
 - Golabs logosu ile profesyonel açılış ekranı
 - Animasyonlu progress bar
 - Versiyon gösterimi
 
 ### 🔲 QR Kod & Sponsor Sistemi
+
 - Result ekranında dinamik QR kod gösterimi
 - QR tarama ile sponsor URL'ine yönlendirme (Uber, BiTaksi, Bolt vb.)
 - Tarama istatistikleri ve sayaç
 - Web panelden sponsor ayarları yönetimi
 
 ### 🌐 Web Yönetim Paneli
+
 - **4 Sekmeli Dashboard:** Anasayfa, WiFi, Ayarlar, Sponsor
 - Günlük istatistikler ve son test kayıtları
 - Cihaz bilgisi (IP, firmware, uptime, sinyal gücü)
 - Parlaklık kontrolü (manuel/otomatik LDR)
 
 ### 📶 WiFi AP+STA Modu
+
 - Daima erişilebilir Access Point (`VibeGo` / `12345678`)
 - Web üzerinden ağ tarama ve bağlantı
 - Hibrit mod: AP ve Client aynı anda aktif
 
 ### ☁️ Cloud Entegrasyonu
+
 - Make.com webhook ile Google Sheets entegrasyonu
 - Offline kuyruk sistemi
 - Ayarlanabilir sync süresi (hemen, dakika, saat, gün)
 
 ### ⏰ Zaman & Güvenlik
+
 - NTP senkronizasyonu (Türkiye timezone)
 - Watchdog Timer (30sn timeout)
 - HTTP OTA otomatik güncelleme
@@ -56,35 +69,18 @@ VibeGo, bar ve mekanlar için tasarlanmış, modern dokunmatik ekranlı bir alko
 
 ## 🖥️ Donanım Platformu
 
-### Ana Kart: JC2432W328
+### Ana Kart: Waveshare ESP32-S3-Touch-LCD-5
 
 | Özellik | Değer |
 |---------|-------|
-| **İşlemci** | ESP32-WROOM-32 (Dual-core, 240MHz) |
-| **Ekran** | 2.8" TFT LCD, 320x240 (Landscape) |
-| **Display Controller** | ST7789 (SPI) |
-| **Touch Controller** | CST820 Capacitive (I2C) |
-| **Bellek** | 520KB SRAM, 4MB Flash |
-| **Bağlantı** | WiFi + Bluetooth LE |
-
-### Pin Bağlantıları
-
-**Display (SPI):**
-| Pin | GPIO |
-|-----|------|
-| MOSI | 13 |
-| SCLK | 14 |
-| CS | 15 |
-| DC | 2 |
-| BL | 27 |
-
-**Touch (I2C):**
-| Pin | GPIO |
-|-----|------|
-| SDA | 33 |
-| SCL | 32 |
-| RST | 25 |
-| INT | 21 |
+| **İşlemci** | ESP32-S3-WROOM-1-N16R8 (Dual-core, 240MHz) |
+| **Ekran** | 5" IPS LCD, 1024x600 (Landscape) |
+| **Display Interface** | RGB565 (16-bit Parallel) |
+| **Touch Controller** | GT911 Capacitive (I2C, 5-point) |
+| **IO Expander** | CH422G (Backlight, Reset) |
+| **Bellek** | 16MB Flash, 8MB PSRAM |
+| **Bağlantı** | WiFi + Bluetooth 5 LE |
+| **Arayüzler** | CAN, RS485, I2C, USB-C |
 
 ---
 
@@ -120,19 +116,19 @@ VibeGo, bar ve mekanlar için tasarlanmış, modern dokunmatik ekranlı bir alko
 
 - [PlatformIO](https://platformio.org/) (VS Code extension)
 - USB-C kablo
-- JC2432W328 geliştirme kartı
+- Waveshare ESP32-S3-Touch-LCD-5 geliştirme kartı
 
 ### Derleme ve Yükleme
 
 ```bash
 # Projeyi derle
-pio run
+pio run -e waveshare_5inch
 
-# Firmware'i yükle (COM portunu ayarlayın)
-pio run -t upload --upload-port COM14
+# Firmware'i yükle
+pio run -e waveshare_5inch -t upload
 
 # Seri monitör
-pio device monitor --port COM14 --baud 115200
+pio device monitor --baud 115200
 ```
 
 ---
@@ -169,12 +165,14 @@ VibeGo/
 Detaylı ticarileşme planı için: **[ROADMAP.md](ROADMAP.md)**
 
 ### Yakın Dönem (Q1 2025)
+
 - [ ] ZE30 elektrokimyasal alkol sensörü
 - [ ] SHT30 nem sensörü (nefes algılama)
 - [ ] Fan PWM kontrolü
 - [ ] Boot splash animasyonu
 
 ### Orta Dönem (Q2-Q3 2025)
+
 - [ ] Reklam & Sponsor sistemi
 - [ ] Çoklu dil desteği (TR/EN/DE/RU)
 - [ ] Sesli geri bildirim
@@ -218,4 +216,4 @@ MIT License - Detaylar için [LICENSE](LICENSE) dosyasına bakın.
 
 ---
 
-*Son Güncelleme: 09.12.2024 | v1.3.0*
+*Son Güncelleme: 15.12.2024 | v2.0.0*

@@ -1,13 +1,13 @@
 /**
  * @file lv_conf.h
  * Configuration file for LVGL v8.3.11
- * OPTIMIZED for VibeGo / ESP32-WROOM-32
+ * OPTIMIZED for VibeGo / ESP32-S3-WROOM-1 with PSRAM
  * 
- * Optimizations:
- * - Font compression enabled
- * - Only essential fonts
- * - Disabled unused widgets
- * - Reduced memory footprint
+ * Platform: Waveshare ESP32-S3-Touch-LCD-5 (1024x600)
+ * Features:
+ * - Full font set for large display
+ * - PSRAM-backed memory
+ * - QR code support
  */
 
 #ifndef LV_CONF_H
@@ -27,7 +27,7 @@
  *=========================*/
 #define LV_MEM_CUSTOM 0
 #if LV_MEM_CUSTOM == 0
-    #define LV_MEM_SIZE (32 * 1024U)   // 32KB for LVGL heap
+    #define LV_MEM_SIZE (128 * 1024U)   // 128KB for LVGL heap (PSRAM available)
     #define LV_MEM_ADR 0
     #define LV_MEM_POOL_INCLUDE <stdlib.h>
     #define LV_MEM_POOL_ALLOC malloc
@@ -54,29 +54,29 @@
    FONT SETTINGS
  *================*/
 // Font quality: 4 BPP for smooth anti-aliased text
+#define LV_FONT_MONTSERRAT_10 1         // Small hints
 #define LV_FONT_MONTSERRAT_12 1         // Small text
 #define LV_FONT_MONTSERRAT_14 1         // Body text  
-#define LV_FONT_MONTSERRAT_16 1         // Buttons
-#define LV_FONT_MONTSERRAT_20 1         // Headers/Logo
+#define LV_FONT_MONTSERRAT_16 1         // Buttons (small)
+#define LV_FONT_MONTSERRAT_20 1         // Headers
+#define LV_FONT_MONTSERRAT_24 1         // Subtitles (new for 1024x600)
+#define LV_FONT_MONTSERRAT_28 1         // Titles (new for 1024x600)
+#define LV_FONT_MONTSERRAT_32 1         // Large buttons (new for 1024x600)
+#define LV_FONT_MONTSERRAT_40 1         // Extra large (new for 1024x600)
+#define LV_FONT_MONTSERRAT_48 1         // Big numbers on Result screen
 
-// Disabled fonts (save ~100KB)
+// Disabled fonts
 #define LV_FONT_MONTSERRAT_8 0
-#define LV_FONT_MONTSERRAT_10 1
 #define LV_FONT_MONTSERRAT_18 0
 #define LV_FONT_MONTSERRAT_22 0
-#define LV_FONT_MONTSERRAT_24 0
 #define LV_FONT_MONTSERRAT_26 0
-#define LV_FONT_MONTSERRAT_28 0
-#define LV_FONT_MONTSERRAT_30 0
-#define LV_FONT_MONTSERRAT_32 0
+#define LV_FONT_MONTSERRAT_30 1
 #define LV_FONT_MONTSERRAT_34 0
 #define LV_FONT_MONTSERRAT_36 0
 #define LV_FONT_MONTSERRAT_38 0
-#define LV_FONT_MONTSERRAT_40 0
 #define LV_FONT_MONTSERRAT_42 0
 #define LV_FONT_MONTSERRAT_44 0
 #define LV_FONT_MONTSERRAT_46 0
-#define LV_FONT_MONTSERRAT_48 1        // Big numbers on Result screen
 
 // Font compression (saves ~30-50%)
 #define LV_USE_FONT_COMPRESSED 1
