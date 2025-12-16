@@ -1,14 +1,14 @@
 /**
  * ============================================================
- * AlkoMetric / VibeGo Kiosk - Ana Program
- * Platform: JC2432W328 (ESP32 + ST7789 + CST820)
- * Display: 320x240 Landscape Mode
+ * VibeGo Kiosk - Ana Program
+ * Platform: Waveshare ESP32-S3-Touch-LCD-5B
+ * Display: 1024x600 RGB Landscape Mode
  * 
  * Features:
  * - WiFi AP+STA Mode (Always accessible via AP)
  * - Web Dashboard for all settings
  * - HTTP OTA Updates
- * - Auto Brightness (LDR on GPIO34)
+ * - Manual Brightness (Web control)
  * - Sensor Simulation Mode
  * ============================================================
  */
@@ -16,7 +16,7 @@
 #include <Arduino.h>
 #include <lvgl.h>
 #include <esp_task_wdt.h>
-#include "LGFX_Setup.h"
+#include <ESP_Panel_Library.h>
 #include "ui/ui.h"
 #include "wifi_handler.h"
 #include "http_ota.h"
@@ -33,11 +33,11 @@
 #define FIRMWARE_VERSION "1.4.0"
 
 // ============================================================
-// Display Configuration (Landscape)
+// Display Configuration (Waveshare 5B)
 // ============================================================
-#define DISPLAY_WIDTH  320
-#define DISPLAY_HEIGHT 240
-#define DISPLAY_ROTATION 1  // 1 = Landscape
+#define DISPLAY_WIDTH  1024
+#define DISPLAY_HEIGHT 600
+// No rotation needed, RGB panel is already landscape
 
 // ============================================================
 // Sensor Simulation
@@ -49,51 +49,56 @@
 // ============================================================
 // Global Objects
 // ============================================================
-static LGFX lcd;
+static ESP_Panel *panel = nullptr;
 static lv_disp_draw_buf_t draw_buf;
 
-// Double buffering for smoother rendering (DMA can write one while CPU fills other)
-// Buffer size: 320 * 24 * 2 bytes * 2 buffers = ~30KB
-#define DRAW_BUF_LINES 24  // 1/10 of screen height
-static lv_color_t buf1[DISPLAY_WIDTH * DRAW_BUF_LINES];
-static lv_color_t buf2[DISPLAY_WIDTH * DRAW_BUF_LINES];
+// LVGL buffer - using PSRAM for large 1024x600 display
+// Buffer size: Full Frame (1024 * 600 * 2 bytes = 1.2MB)
+// Double buffering in PSRAM for smooth animations
+static lv_color_t *buf1 = nullptr;
+static lv_color_t *buf2 = nullptr;
+// Note: We will alloc full size in setup
+
 
 // Simulation state
 static bool is_measuring = false;
 static uint32_t measurement_start_time = 0;
 
 // ============================================================
-// Brightness Callback
+// Brightness Callback (Manual via web panel)
 // ============================================================
 void set_display_brightness(int level) {
-    lcd.setBrightness(level);
+    // TODO: Implement backlight control via CH422G IO expander
+    // For now, brightness is handled by web panel
+    Serial.printf("Brightness level: %d\n", level);
 }
 
 // ============================================================
-// LVGL Display Flush Callback
+// LVGL Display Flush Callback (ESP_Panel)
 // ============================================================
 void my_disp_flush(lv_disp_drv_t *disp_drv, const lv_area_t *area, lv_color_t *color_p) {
-    uint32_t w = (area->x2 - area->x1 + 1);
-    uint32_t h = (area->y2 - area->y1 + 1);
-
-    lcd.startWrite();
-    lcd.setAddrWindow(area->x1, area->y1, w, h);
-    lcd.writePixels((lgfx::rgb565_t *)&color_p->full, w * h);
-    lcd.endWrite();
-
+    if (panel && panel->getLcd()) {
+        panel->getLcd()->drawBitmap(area->x1, area->y1, area->x2 + 1, area->y2 + 1, color_p);
+    }
     lv_disp_flush_ready(disp_drv);
 }
 
 // ============================================================
-// LVGL Touch Read Callback
+// LVGL Touch Read Callback (GT911)
 // ============================================================
 void my_touchpad_read(lv_indev_drv_t *indev_drv, lv_indev_data_t *data) {
-    uint16_t touchX, touchY;
-    
-    if (lcd.getTouch(&touchX, &touchY)) {
-        data->state = LV_INDEV_STATE_PRESSED;
-        data->point.x = touchX;
-        data->point.y = touchY;
+    if (panel && panel->getLcdTouch()) {
+        panel->getLcdTouch()->readData();
+        bool touched = panel->getLcdTouch()->getTouchState();
+        
+        if (touched) {
+            TouchPoint point = panel->getLcdTouch()->getPoint(0);
+            data->state = LV_INDEV_STATE_PRESSED;
+            data->point.x = point.x;
+            data->point.y = point.y;
+        } else {
+            data->state = LV_INDEV_STATE_RELEASED;
+        }
     } else {
         data->state = LV_INDEV_STATE_RELEASED;
     }
@@ -142,7 +147,7 @@ void update_measurement_simulation() {
         // Log the test result
         logger_add_test(bac, is_safe);
         
-        if (is_safe) {
+        if (bac < 0.50) {
             ui_show_result_safe(bac);
         } else {
             ui_show_result_danger(bac);
@@ -238,6 +243,10 @@ void handle_serial_commands() {
 // Setup
 // ============================================================
 void setup() {
+    // 1. Initialize Watchdog (60s timeout, NO PANIC) to prevent resets during debug
+    // This will allow us to see if loop freezes without rebooting
+    esp_task_wdt_init(60, false);
+    
     Serial.begin(115200);
     delay(500);
     
@@ -245,42 +254,69 @@ void setup() {
     Serial.println("╔════════════════════════════════════════╗");
     Serial.println("║      VIBEGO - AlkoMetric Kiosk         ║");
     Serial.printf("║      Firmware: v%s                  ║\n", FIRMWARE_VERSION);
-    Serial.println("║      Platform: JC2432W328              ║");
+    Serial.println("║      Platform: Waveshare ESP32-S3-5B  ║");
+    Serial.println("║      Display: 1024x600 RGB            ║");
     Serial.println("║      Mode: AP + STA                    ║");
     Serial.println("╚════════════════════════════════════════╝");
     Serial.println();
 
-    // Initialize Display
-    Serial.print("[INIT] Display...");
-    lcd.init();
-    lcd.setRotation(DISPLAY_ROTATION);
-    lcd.setBrightness(255);
-    lcd.fillScreen(TFT_BLACK);
+    // 2. Initialize ESP_Panel (Display + Touch)
+    Serial.print("[INIT] ESP_Panel...");
+    panel = new ESP_Panel();
+    panel->init();
+    panel->begin();
     Serial.println(" OK");
+    
+    Serial.println("[INIT] Brightness: Manual control via web");
 
-    // Initialize Brightness (LDR)
-    Serial.print("[INIT] LDR Brightness...");
-    brightness_init();
-    brightness_set_callback(set_display_brightness);
-    Serial.println(" OK");
-
-    // Initialize LVGL
+    // 3. Initialize LVGL Core
     Serial.print("[INIT] LVGL...");
     lv_init();
     
-    // Double buffering: DMA writes buf1 while CPU fills buf2, then swap
-    lv_disp_draw_buf_init(&draw_buf, buf1, buf2, DISPLAY_WIDTH * DRAW_BUF_LINES);
+    // 4. Allocate Full Frame Buffers in PSRAM (1.2MB each)
+    // 4. Allocate Partial Draw Buffers in INTERNAL RAM
+    // Reduced to 20 lines to prevent OOM (Out Of Memory) crashes
+    // 1024 * 20 * 2 bytes = ~40KB per buffer. Total ~80KB. Safe for WiFi + System.
+    int buffer_lines = 20; 
+    uint32_t buf_size = DISPLAY_WIDTH * buffer_lines;
+    Serial.printf("[INIT] Allocating Internal SRAM buffers: 2 x %d lines (~%d KB)...\n", buffer_lines, (buf_size * 2) / 1024);
     
+    // Use MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA to ensure it's DMA capable
+    buf1 = (lv_color_t *)heap_caps_malloc(buf_size * sizeof(lv_color_t), MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA);
+    buf2 = (lv_color_t *)heap_caps_malloc(buf_size * sizeof(lv_color_t), MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA);
+    
+    if (!buf1 || !buf2) {
+        Serial.println(" FAILED (Internal SRAM allocation)");
+        Serial.println("Trying smaller buffer (10 lines)...");
+        if (buf1) free(buf1);
+        if (buf2) free(buf2);
+        
+        // Fallback: 10 lines
+        buffer_lines = 10;
+        buf_size = DISPLAY_WIDTH * buffer_lines;
+        buf1 = (lv_color_t *)heap_caps_malloc(buf_size * sizeof(lv_color_t), MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA);
+        buf2 = (lv_color_t *)heap_caps_malloc(buf_size * sizeof(lv_color_t), MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA);
+    }
+    
+    Serial.printf("[INIT] Buffer1 Addr: %p, Buffer2 Addr: %p\n", buf1, buf2);
+    // On ESP32-S3, Internal SRAM is usually below 0x3C000000
+    if ((uint32_t)buf1 < 0x3C000000) Serial.println("[INFO] Buffer1 is in Internal RAM (Optimal for performace)");
+    else Serial.println("[WARN] Buffer1 is in PSRAM (May cause flickering)");
+    
+    lv_disp_draw_buf_init(&draw_buf, buf1, buf2, buf_size);
+    
+    // 5. Register Display Driver
     static lv_disp_drv_t disp_drv;
     lv_disp_drv_init(&disp_drv);
     disp_drv.hor_res = DISPLAY_WIDTH;
     disp_drv.ver_res = DISPLAY_HEIGHT;
     disp_drv.flush_cb = my_disp_flush;
     disp_drv.draw_buf = &draw_buf;
+    disp_drv.full_refresh = 0; // Use partial refresh with double buffer
     lv_disp_drv_register(&disp_drv);
     Serial.println(" OK");
     
-    // Initialize Touch
+    // 6. Register Touch Driver
     Serial.print("[INIT] Touch...");
     static lv_indev_drv_t indev_drv;
     lv_indev_drv_init(&indev_drv);
@@ -289,16 +325,17 @@ void setup() {
     lv_indev_drv_register(&indev_drv);
     Serial.println(" OK");
 
-    // Initialize UI
+    // 7. Initialize UI
     Serial.print("[INIT] UI...");
     ui_init();
     Serial.println(" OK");
 
     // Setup screen event for simulation
-    extern lv_obj_t * ui_Measuring;
-    lv_obj_add_event_cb(ui_Measuring, screen_load_event_cb, LV_EVENT_SCREEN_LOADED, NULL);
+    // DISABLED: ui_Measuring is NULL until first created (on-demand)
+    // extern lv_obj_t * ui_Measuring;
+    // lv_obj_add_event_cb(ui_Measuring, screen_load_event_cb, LV_EVENT_SCREEN_LOADED, NULL);
 
-    // Initialize WiFi (AP+STA mode)
+    // 8. Initialize WiFi (AP+STA mode)
     Serial.println("[INIT] WiFi AP+STA...");
     wifi_init(true);
     
@@ -307,7 +344,7 @@ void setup() {
         ntp_init();
     }
     
-    // Initialize Data Logger (SPIFFS)
+    // 9. Initialize Services
     Serial.print("[INIT] Logger...");
     if (logger_init()) {
         Serial.println(" OK");
@@ -315,10 +352,8 @@ void setup() {
         Serial.println(" FAILED");
     }
     
-    // Initialize Web Server (always start - works on AP)
     web_server_init();
     
-    // Load saved sponsor QR URL
     sponsor_init();
     String savedQrUrl = sponsor_get_qr_url();
     String savedQrTitle = sponsor_get_qr_title();
@@ -326,20 +361,13 @@ void setup() {
     ui_update_qr_title(savedQrTitle.c_str());
     Serial.printf("[INIT] Sponsor: %s (%s)\n", savedQrTitle.c_str(), savedQrUrl.c_str());
     
-    // Initialize Webhook (if connected)
     if (wifi_is_connected()) {
         webhook_init();
     }
     
-    // Initialize Watchdog Timer (30 seconds)
-    Serial.print("[INIT] Watchdog...");
-    esp_task_wdt_init(30, true);
-    esp_task_wdt_add(NULL);
-    Serial.println(" OK (30s)");
+    // 10. WDT is initialized at start (30s)
+    // No need to add loop task manually in Arduino
     
-    // LDR Debug
-    Serial.printf("[INIT] LDR Raw Value: %d\n", brightness_get_ldr_raw());
-
     Serial.println();
     Serial.println("[READY] System started!");
     Serial.println("[INFO] Type 'help' for commands");
@@ -354,6 +382,8 @@ void setup() {
 // Main Loop
 // ============================================================
 void loop() {
+    uint32_t loop_start = millis();
+    
     // Reset Watchdog Timer
     esp_task_wdt_reset();
     
@@ -390,11 +420,43 @@ void loop() {
     
     // Sensor simulation
     if (SENSOR_SIMULATION_ENABLED) {
+        // Auto-start simulation when Measuring screen is shown
+        static lv_obj_t* last_screen = NULL;
+        lv_obj_t* current_screen = lv_scr_act();
+        
+        extern lv_obj_t * ui_Measuring;
+        if (current_screen != last_screen) {
+            if (current_screen == ui_Measuring && ui_Measuring != NULL) {
+                start_measurement_simulation();
+            }
+            last_screen = current_screen;
+        }
+        
         update_measurement_simulation();
     }
     
     // Serial commands
     handle_serial_commands();
+    
+    // System Health Monitor (Every 10 seconds)
+    static uint32_t last_monitor = 0;
+    if (millis() - last_monitor > 10000) {
+        last_monitor = millis();
+        Serial.printf("[SYS] Free Heap: %d KB | Min Heap: %d KB | PSRAM: %d KB\n", 
+            esp_get_free_heap_size() / 1024, 
+            esp_get_minimum_free_heap_size() / 1024,
+            heap_caps_get_free_size(MALLOC_CAP_SPIRAM) / 1024);
+            
+        if (!wifi_is_connected()) {
+            Serial.println("[WARN] WiFi Disconnected!");
+        }
+    }
+    
+    // Loop Latency Warning
+    uint32_t loop_duration = millis() - loop_start;
+    if (loop_duration > 50) {
+        Serial.printf("[WARN] Loop took %d ms! (Possible UI Lag)\n", loop_duration);
+    }
     
     delay(5);
 }

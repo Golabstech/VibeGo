@@ -57,26 +57,26 @@
 #define LV_FONT_MONTSERRAT_12 1         // Small text
 #define LV_FONT_MONTSERRAT_14 1         // Body text  
 #define LV_FONT_MONTSERRAT_16 1         // Buttons
-#define LV_FONT_MONTSERRAT_20 1         // Headers/Logo
+#define LV_FONT_MONTSERRAT_20 1         // Headers
+#define LV_FONT_MONTSERRAT_24 1         // Large Headers
+#define LV_FONT_MONTSERRAT_28 1         // Extra Large
+#define LV_FONT_MONTSERRAT_32 1         // Extra Large
+#define LV_FONT_MONTSERRAT_36 1         // Giant
+#define LV_FONT_MONTSERRAT_40 1         // Giant
+#define LV_FONT_MONTSERRAT_48 1         // Huge Numbers
 
-// Disabled fonts (save ~100KB)
+// Disabled fonts (save flash)
 #define LV_FONT_MONTSERRAT_8 0
-#define LV_FONT_MONTSERRAT_10 1
+#define LV_FONT_MONTSERRAT_10 0
 #define LV_FONT_MONTSERRAT_18 0
 #define LV_FONT_MONTSERRAT_22 0
-#define LV_FONT_MONTSERRAT_24 0
 #define LV_FONT_MONTSERRAT_26 0
-#define LV_FONT_MONTSERRAT_28 0
 #define LV_FONT_MONTSERRAT_30 0
-#define LV_FONT_MONTSERRAT_32 0
 #define LV_FONT_MONTSERRAT_34 0
-#define LV_FONT_MONTSERRAT_36 0
 #define LV_FONT_MONTSERRAT_38 0
-#define LV_FONT_MONTSERRAT_40 0
 #define LV_FONT_MONTSERRAT_42 0
 #define LV_FONT_MONTSERRAT_44 0
 #define LV_FONT_MONTSERRAT_46 0
-#define LV_FONT_MONTSERRAT_48 1        // Big numbers on Result screen
 
 // Font compression (saves ~30-50%)
 #define LV_USE_FONT_COMPRESSED 1
