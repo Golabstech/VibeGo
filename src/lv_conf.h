@@ -63,7 +63,7 @@
 #define LV_FONT_MONTSERRAT_32 1         // Extra Large
 #define LV_FONT_MONTSERRAT_36 1         // Giant
 #define LV_FONT_MONTSERRAT_40 1         // Giant
-#define LV_FONT_MONTSERRAT_48 1         // Huge Numbers
+#define LV_FONT_MONTSERRAT_48 1         // Huge Numbers (BAC value)
 
 // Disabled fonts (save flash)
 #define LV_FONT_MONTSERRAT_8 0

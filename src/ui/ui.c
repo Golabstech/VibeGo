@@ -63,8 +63,16 @@ lv_obj_t * ui_Result_QR_Title;
 // Safe Transition Guard
 static bool is_transitioning = false;
 
-// Helper to safely load screens
-static void safe_scr_load(lv_obj_t * new_scr, lv_scr_load_anim_t anim_type, uint32_t time, uint32_t delay, bool auto_del) {
+// Helper to clean up old screen manually (prevents memory leak)
+static void cleanup_old_screen(lv_obj_t * old_scr) {
+    if (old_scr != NULL && old_scr != lv_scr_act()) {
+        lv_obj_del(old_scr);
+    }
+}
+
+// UNIFIED: Safe screen loading with memory cleanup
+// This is the ONLY way to load screens - ensures consistency
+static void safe_scr_load_with_cleanup(lv_obj_t * new_scr) {
     if (is_transitioning) {
         printf("[UI] Transition blocked (already in progress)\n");
         return; 
@@ -78,18 +86,34 @@ static void safe_scr_load(lv_obj_t * new_scr, lv_scr_load_anim_t anim_type, uint
     
     is_transitioning = true;
     
-    // IMPORTANT: Reset transitioning flag after delay + time
-    // Since we use auto_del=true, we rely on the next screen load or a timer to reset this.
-    // However, for simplicity with NO ANIM, we can reset it quickly.
-    // Ideally, we should use an LVGL event or callback, but a small timer works for now.
-    // For NO_ANIM, reset immediately after call
+    // CRITICAL: Clean memory before transition
+    lv_obj_t * old_scr = lv_scr_act();
+    if (old_scr != NULL && old_scr != new_scr) {
+        lv_obj_clean(old_scr); // Delete all children
+    }
     
-    lv_scr_load_anim(new_scr, anim_type, time, delay, auto_del);
+    // Process pending LVGL tasks
+    lv_task_handler();
     
-    // Release lock after small delay to allow UI to settle
-    // Using a non-blocking way would be better, but for now we trust LVGL handles NONE anim instantly.
-    // We will clear the flag in the next loop or assume instant.
-    is_transitioning = false; 
+    // Reset watchdog (if available)
+    #ifdef ESP_PLATFORM
+    extern void esp_task_wdt_reset();
+    esp_task_wdt_reset();
+    #endif
+    
+    // Load new screen (NO animation, NO auto-delete)
+    lv_scr_load_anim(new_scr, LV_SCR_LOAD_ANIM_NONE, 0, 0, false);
+    
+    // Release lock
+    is_transitioning = false;
+    
+    printf("[UI] Screen loaded: %p\n", new_scr);
+}
+
+// DEPRECATED: Old safe_scr_load (kept for compatibility, redirects to new function)
+static void safe_scr_load(lv_obj_t * new_scr, lv_scr_load_anim_t anim_type, uint32_t time, uint32_t delay, bool auto_del) {
+    // Ignore old parameters, use new unified system
+    safe_scr_load_with_cleanup(new_scr);
 }
 
 // ============================================================
@@ -141,7 +165,7 @@ void ui_Splash_screen_init(void) {
     lv_obj_set_style_bg_color(ui_Splash, lv_color_hex(UI_COLOR_BG_DARK), 0);
     lv_obj_set_style_bg_opa(ui_Splash, 255, 0); // Force Opaque
 
-    // Logo image (Golabs) - scaled up using zoom
+    // Logo image (Golabs) - native size (no zoom for performance)
     ui_Splash_Logo = lv_img_create(ui_Splash);
     lv_img_set_src(ui_Splash_Logo, &golabs_logo);
     lv_img_set_zoom(ui_Splash_Logo, 512); // 2x Zoom (256 is 1x)
@@ -379,12 +403,12 @@ void ui_Result_screen_init(void) {
     lv_obj_set_style_bg_color(ui_Result, lv_color_hex(UI_COLOR_BG_DARK), 0);
     lv_obj_set_style_bg_opa(ui_Result, 255, 0); // Force Opaque
 
-    // LEFT PANEL - BAC Value
+    // LEFT PANEL - BAC Value (REDUCED SIZE)
     lv_obj_t * left_panel = lv_obj_create(ui_Result);
-    lv_obj_set_size(left_panel, 450, 500); // 150x200 -> 450x500
+    lv_obj_set_size(left_panel, 420, 480); // Reduced from 450x500
     lv_obj_align(left_panel, LV_ALIGN_LEFT_MID, 50, 0);
     lv_obj_set_style_bg_color(left_panel, lv_color_hex(UI_COLOR_PANEL), 0);
-    lv_obj_set_style_bg_opa(left_panel, 220, 0);
+    lv_obj_set_style_bg_opa(left_panel, 200, 0); // Reduced opacity
     lv_obj_set_style_radius(left_panel, 30, 0);
     lv_obj_set_style_border_width(left_panel, 0, 0);
     lv_obj_clear_flag(left_panel, LV_OBJ_FLAG_SCROLLABLE);
@@ -397,9 +421,9 @@ void ui_Result_screen_init(void) {
 
     ui_Result_Value = lv_label_create(left_panel);
     lv_label_set_text(ui_Result_Value, "0.00");
-    lv_obj_set_style_text_font(ui_Result_Value, &lv_font_montserrat_48, 0); // Need Huge font or zoom
-    // Note: 48 is the max we defined. We can zoom it for 2x size.
-    lv_obj_set_style_transform_zoom(ui_Result_Value, 512, 0); // 2x Zoom
+    // OPTIMIZED: Use 48pt font directly (no zoom transform)
+    // 48pt is large enough for BAC value, no need for zoom
+    lv_obj_set_style_text_font(ui_Result_Value, &lv_font_montserrat_48, 0);
     lv_obj_set_style_text_color(ui_Result_Value, lv_color_hex(UI_COLOR_GREEN), 0);
     lv_obj_align(ui_Result_Value, LV_ALIGN_CENTER, 0, -20);
 
@@ -407,23 +431,23 @@ void ui_Result_screen_init(void) {
     lv_label_set_text(ui_Result_Unit, "promil");
     lv_obj_set_style_text_font(ui_Result_Unit, &lv_font_montserrat_24, 0);
     lv_obj_set_style_text_color(ui_Result_Unit, lv_color_hex(UI_COLOR_TEXT_MUTED), 0);
-    lv_obj_align(ui_Result_Unit, LV_ALIGN_CENTER, 0, 60);
+    lv_obj_align(ui_Result_Unit, LV_ALIGN_CENTER, 0, 50);
 
     ui_Result_Message = lv_label_create(left_panel);
     lv_label_set_long_mode(ui_Result_Message, LV_LABEL_LONG_WRAP);
-    lv_obj_set_width(ui_Result_Message, 400);
+    lv_obj_set_width(ui_Result_Message, 380); // Reduced from 400
     lv_label_set_text(ui_Result_Message, "Iyi yolculuklar!");
     lv_obj_set_style_text_align(ui_Result_Message, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_set_style_text_font(ui_Result_Message, &lv_font_montserrat_24, 0);
     lv_obj_set_style_text_color(ui_Result_Message, lv_color_hex(UI_COLOR_TEXT_MUTED), 0);
     lv_obj_align(ui_Result_Message, LV_ALIGN_BOTTOM_MID, 0, -40);
 
-    // RIGHT PANEL - QR Code + Button
+    // RIGHT PANEL - QR Code + Button (REDUCED SIZE)
     lv_obj_t * right_panel = lv_obj_create(ui_Result);
-    lv_obj_set_size(right_panel, 400, 500);
+    lv_obj_set_size(right_panel, 380, 480); // Reduced from 400x500
     lv_obj_align(right_panel, LV_ALIGN_RIGHT_MID, -50, 0);
     lv_obj_set_style_bg_color(right_panel, lv_color_hex(UI_COLOR_PANEL), 0);
-    lv_obj_set_style_bg_opa(right_panel, 180, 0);
+    lv_obj_set_style_bg_opa(right_panel, 160, 0); // Reduced opacity
     lv_obj_set_style_radius(right_panel, 30, 0);
     lv_obj_set_style_border_width(right_panel, 0, 0);
     lv_obj_set_style_pad_all(right_panel, 20, 0);
@@ -432,29 +456,50 @@ void ui_Result_screen_init(void) {
     // QR Code Title
     ui_Result_QR_Title = lv_label_create(right_panel);
     lv_label_set_long_mode(ui_Result_QR_Title, LV_LABEL_LONG_WRAP);
-    lv_obj_set_width(ui_Result_QR_Title, 350);
+    lv_obj_set_width(ui_Result_QR_Title, 330); // Reduced from 350
     lv_label_set_text(ui_Result_QR_Title, "TAKSI CAGIR");
     lv_obj_set_style_text_font(ui_Result_QR_Title, &lv_font_montserrat_24, 0);
     lv_obj_set_style_text_color(ui_Result_QR_Title, lv_color_hex(UI_COLOR_CYAN), 0);
     lv_obj_set_style_text_align(ui_Result_QR_Title, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_align(ui_Result_QR_Title, LV_ALIGN_TOP_MID, 0, 10);
 
-    // QR Code (250px)
+    // TEMPORARY: QR Code DISABLED to save memory
+    // QR code generation uses significant memory (~50KB for 180x180)
+    // Will be re-enabled after memory optimization
+    #if 0  // QR CODE TEMPORARILY DISABLED
     #if LV_USE_QRCODE
-    ui_Result_QR = lv_qrcode_create(right_panel, 250, 
+    ui_Result_QR = lv_qrcode_create(right_panel, 180, 
         lv_color_hex(0x000000), lv_color_hex(0xFFFFFF));
     lv_qrcode_update(ui_Result_QR, DEFAULT_QR_URL, strlen(DEFAULT_QR_URL));
     lv_obj_align(ui_Result_QR, LV_ALIGN_CENTER, 0, -20);
     lv_obj_set_style_border_color(ui_Result_QR, lv_color_hex(0xFFFFFF), 0);
-    lv_obj_set_style_border_width(ui_Result_QR, 10, 0); // Thick border
+    lv_obj_set_style_border_width(ui_Result_QR, 8, 0); // Reduced border
+    #endif
+    #else
+    // Placeholder for QR code
+    lv_obj_t * qr_placeholder = lv_obj_create(right_panel);
+    lv_obj_set_size(qr_placeholder, 180, 180);
+    lv_obj_align(qr_placeholder, LV_ALIGN_CENTER, 0, -20);
+    lv_obj_set_style_bg_color(qr_placeholder, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_border_color(qr_placeholder, lv_color_hex(0x00d4aa), 0);
+    lv_obj_set_style_border_width(qr_placeholder, 3, 0);
+    lv_obj_set_style_radius(qr_placeholder, 10, 0);
+    
+    lv_obj_t * qr_text = lv_label_create(qr_placeholder);
+    lv_label_set_text(qr_text, "QR\nKODU\n\n(Web'den\nAyarlayın)");
+    lv_obj_set_style_text_align(qr_text, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_text_color(qr_text, lv_color_hex(0x666666), 0);
+    lv_obj_center(qr_text);
+    
+    ui_Result_QR = qr_placeholder;  // For compatibility
     #endif
 
     // QR Hint
     ui_Result_QR_Label = lv_label_create(right_panel);
-    lv_label_set_text(ui_Result_QR_Label, "Tara & Git");
+    lv_label_set_text(ui_Result_QR_Label, "Web Panel'den Ayarlayın");
     lv_obj_set_style_text_font(ui_Result_QR_Label, &lv_font_montserrat_20, 0);
     lv_obj_set_style_text_color(ui_Result_QR_Label, lv_color_hex(UI_COLOR_TEXT_MUTED), 0);
-    lv_obj_align(ui_Result_QR_Label, LV_ALIGN_CENTER, 0, 125);
+    lv_obj_align(ui_Result_QR_Label, LV_ALIGN_CENTER, 0, 105); // Adjusted position
 
     // New Test Button
     ui_Result_NewTest_Btn = lv_btn_create(right_panel);
@@ -490,8 +535,10 @@ void ui_update_qr_title(const char* title) {
 }
 
 void ui_show_result_safe(float bac_value) {
-    ui_Result_screen_init(); // Ensure result screen exists
+    // Create result screen if not exists
+    ui_Result_screen_init();
     
+    // Update result values
     lv_label_set_text(ui_Result_Status_Label, LV_SYMBOL_OK " GUVENLI");
     lv_obj_set_style_text_color(ui_Result_Status_Label, lv_color_hex(UI_COLOR_GREEN), 0);
     
@@ -502,16 +549,15 @@ void ui_show_result_safe(float bac_value) {
     
     lv_label_set_text(ui_Result_Message, "Iyi yolculuklar!\nGuvenli surusler.");
     
-    // safe_scr_load not easy to use here as we need to update UI first
-    // Since this is triggered by logic, not user rapid click, standard load is okay.
-    // But we should use NONE anim to match others.
-    lv_scr_load_anim(ui_Result, LV_SCR_LOAD_ANIM_NONE, 0, 0, true);
-    is_transitioning = false; // Reset guard just in case
+    // UNIFIED: Use same loading system as all other screens
+    safe_scr_load_with_cleanup(ui_Result);
 }
 
 void ui_show_result_danger(float bac_value) {
-    ui_Result_screen_init(); // Ensure result screen exists
+    // Create result screen if not exists
+    ui_Result_screen_init();
 
+    // Update result values
     lv_label_set_text(ui_Result_Status_Label, LV_SYMBOL_CLOSE " TEHLIKE");
     lv_obj_set_style_text_color(ui_Result_Status_Label, lv_color_hex(UI_COLOR_RED), 0);
     
@@ -522,8 +568,8 @@ void ui_show_result_danger(float bac_value) {
     
     lv_label_set_text(ui_Result_Message, "ARAC KULLANMA!\nTaksi cagir.");
     
-    lv_scr_load_anim(ui_Result, LV_SCR_LOAD_ANIM_NONE, 0, 0, true);
-    is_transitioning = false; // Reset guard just in case
+    // UNIFIED: Use same loading system as all other screens
+    safe_scr_load_with_cleanup(ui_Result);
 }
 
 lv_obj_t * ui_get_measuring_screen(void) {

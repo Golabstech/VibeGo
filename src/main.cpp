@@ -147,13 +147,26 @@ void update_measurement_simulation() {
         // Log the test result
         logger_add_test(bac, is_safe);
         
+        // CRITICAL: Reset progress bar before transition
+        lv_bar_set_value(ui_Measuring_Progress, 0, LV_ANIM_OFF);
+        
+        // CRITICAL: Reset watchdog before heavy operation
+        esp_task_wdt_reset();
+        
+        // CRITICAL: Process pending LVGL tasks
+        lv_timer_handler();
+        
+        // CRITICAL: Small delay to let system settle
+        delay(50);
+        
+        // Now load result screen (ui_show_result_* handles memory cleanup)
         if (bac < 0.50) {
             ui_show_result_safe(bac);
         } else {
             ui_show_result_danger(bac);
         }
         
-        lv_bar_set_value(ui_Measuring_Progress, 0, LV_ANIM_OFF);
+        Serial.println("[SIM] Result screen loaded successfully");
     }
 }
 
@@ -243,9 +256,9 @@ void handle_serial_commands() {
 // Setup
 // ============================================================
 void setup() {
-    // 1. Initialize Watchdog (60s timeout, NO PANIC) to prevent resets during debug
-    // This will allow us to see if loop freezes without rebooting
-    esp_task_wdt_init(60, false);
+    // 1. Initialize Watchdog (30s timeout, PANIC ENABLED) to catch freezes
+    // Reduced from 60s to catch issues faster
+    esp_task_wdt_init(30, true);  // 30s timeout, panic on timeout
     
     Serial.begin(115200);
     delay(500);
@@ -273,13 +286,12 @@ void setup() {
     Serial.print("[INIT] LVGL...");
     lv_init();
     
-    // 4. Allocate Full Frame Buffers in PSRAM (1.2MB each)
     // 4. Allocate Partial Draw Buffers in INTERNAL RAM
-    // Reduced to 20 lines to prevent OOM (Out Of Memory) crashes
-    // 1024 * 20 * 2 bytes = ~40KB per buffer. Total ~80KB. Safe for WiFi + System.
-    int buffer_lines = 20; 
+    // INCREASED: 20 → 40 lines to reduce rendering overhead
+    // 1024 * 40 * 2 bytes = ~80KB per buffer. Total ~160KB.
+    int buffer_lines = 40; 
     uint32_t buf_size = DISPLAY_WIDTH * buffer_lines;
-    Serial.printf("[INIT] Allocating Internal SRAM buffers: 2 x %d lines (~%d KB)...\n", buffer_lines, (buf_size * 2) / 1024);
+    Serial.printf("[INIT] Allocating Internal SRAM buffers: 2 x %d lines (~%d KB)...\n", buffer_lines, (buf_size * 4) / 1024);
     
     // Use MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA to ensure it's DMA capable
     buf1 = (lv_color_t *)heap_caps_malloc(buf_size * sizeof(lv_color_t), MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA);
@@ -287,20 +299,25 @@ void setup() {
     
     if (!buf1 || !buf2) {
         Serial.println(" FAILED (Internal SRAM allocation)");
-        Serial.println("Trying smaller buffer (10 lines)...");
+        Serial.println("Trying smaller buffer (20 lines)...");
         if (buf1) free(buf1);
         if (buf2) free(buf2);
         
-        // Fallback: 10 lines
-        buffer_lines = 10;
+        // Fallback: 20 lines
+        buffer_lines = 20;
         buf_size = DISPLAY_WIDTH * buffer_lines;
         buf1 = (lv_color_t *)heap_caps_malloc(buf_size * sizeof(lv_color_t), MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA);
         buf2 = (lv_color_t *)heap_caps_malloc(buf_size * sizeof(lv_color_t), MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA);
+        
+        if (!buf1 || !buf2) {
+            Serial.println(" CRITICAL: Cannot allocate buffers!");
+            while(1) { delay(1000); }  // Halt
+        }
     }
     
     Serial.printf("[INIT] Buffer1 Addr: %p, Buffer2 Addr: %p\n", buf1, buf2);
     // On ESP32-S3, Internal SRAM is usually below 0x3C000000
-    if ((uint32_t)buf1 < 0x3C000000) Serial.println("[INFO] Buffer1 is in Internal RAM (Optimal for performace)");
+    if ((uint32_t)buf1 < 0x3C000000) Serial.println("[INFO] Buffer1 is in Internal RAM (Optimal for performance)");
     else Serial.println("[WARN] Buffer1 is in PSRAM (May cause flickering)");
     
     lv_disp_draw_buf_init(&draw_buf, buf1, buf2, buf_size);
@@ -365,8 +382,11 @@ void setup() {
         webhook_init();
     }
     
-    // 10. WDT is initialized at start (30s)
-    // No need to add loop task manually in Arduino
+    // 10. Print initial heap status
+    Serial.printf("[HEAP] Free: %d KB | Min: %d KB | PSRAM: %d KB\n", 
+        esp_get_free_heap_size() / 1024, 
+        esp_get_minimum_free_heap_size() / 1024,
+        heap_caps_get_free_size(MALLOC_CAP_SPIRAM) / 1024);
     
     Serial.println();
     Serial.println("[READY] System started!");
